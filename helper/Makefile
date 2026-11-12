@@ -25,8 +25,10 @@ ape:
 	@command -v cosmocc >/dev/null || { echo "cosmocc not found on PATH"; exit 1; }
 	@echo "TODO: APE dispatcher (PLAN.md Phase 5 step 18)"; exit 1
 
+# Copy the helper binaries and README into the Android app's assets (bundled into the APK).
 assets: legacy
-	cp build/cablemouse-legacy.exe $(ASSETS)/
+	mkdir -p $(ASSETS)
+	cp build/cablemouse-legacy.exe dist/README.txt $(ASSETS)/
 
 clean:
 	rm -rf build
