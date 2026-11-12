@@ -1,0 +1,12 @@
+# bytes (hex) | event | value
+# events: move_x move_y scroll down up heartbeat
+B0 01 46 | move_x | 6
+B0 01 00 | move_x | -64
+B0 01 7F | move_x | 63
+B0 02 3A | move_y | -6
+B0 03 41 | scroll | 1
+90 00 7F | down | 0
+90 02 7F | down | 2
+80 01 00 | up | 1
+90 00 00 | up | 0
+B0 7F 01 | heartbeat | 1
