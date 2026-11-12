@@ -87,6 +87,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReport.install(this)
+        CrashReport.pending(this)?.let { setContentView(CrashReport.screen(this, it)); return }
         manager = getSystemService(MIDI_SERVICE) as MidiManager
         val p = prefs()
         pxPerInch = p.getFloat("pxPerInch", DEFAULT_PX_PER_INCH)
@@ -102,7 +104,6 @@ class MainActivity : Activity() {
         }
         pal = Palette(dark)
         sound = ClickSound()
-        applySystemBars(dark)
 
         val root = FrameLayout(this).apply { setBackgroundColor(pal.bg) }
         root.addView(buildMain(), FrameLayout.LayoutParams(-1, -1))
@@ -120,6 +121,8 @@ class MainActivity : Activity() {
             insets
         }
         setContentView(root)
+        // Must come after setContentView: the window insets controller doesn't exist before the decor view does.
+        runCatching { applySystemBars(dark) }
 
         @Suppress("DEPRECATION")
         manager.registerDeviceCallback(midiCallback, ui)
@@ -127,23 +130,23 @@ class MainActivity : Activity() {
         refresh(autoOpen = true)
     }
 
-    override fun onResume() { super.onResume(); if (port == null) refresh(autoOpen = true) }
+    override fun onResume() { super.onResume(); if (::settings.isInitialized && port == null) refresh(autoOpen = true) }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean("settings", settings.visibility == View.VISIBLE)
+        if (::settings.isInitialized) outState.putBoolean("settings", settings.visibility == View.VISIBLE)
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        if (settings.visibility == View.VISIBLE) showSettings(false) else super.onBackPressed()
+        if (::settings.isInitialized && settings.visibility == View.VISIBLE) showSettings(false) else super.onBackPressed()
     }
 
     override fun onDestroy() {
         running = false
-        runCatching { manager.unregisterDeviceCallback(midiCallback) }
+        if (::manager.isInitialized) runCatching { manager.unregisterDeviceCallback(midiCallback) }
         closePort()
-        sound.release()
+        if (::sound.isInitialized) sound.release()
         super.onDestroy()
     }
 
