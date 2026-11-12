@@ -4,3 +4,5 @@ build/
 helper/build/
 *.iml
 .project.el
+keystore.properties
+*.jks

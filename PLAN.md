@@ -121,4 +121,5 @@ One C codebase builds two outputs:
 - **Windows SmartScreen** may warn about an unsigned exe ("More info → Run anyway"). Code signing can come later.
 - **Linux Wayland** blocks injecting input through XTest. It needs uinput access, so that case is documented.
 - **Some antivirus tools** flag programs that inject input, and polyglot APE files get flagged more often. Keep the helper small and its source open.
+- **Legacy exe and the C runtime.** The `cablemouse-legacy.exe` built on the current dev machine links the Universal C Runtime (`api-ms-win-crt-*`), so it needs Windows 10/11, or Windows 7/8.1 with the UCRT update (KB2999226). Windows XP/Vista need a build from an msvcrt-based MinGW (for example MSYS2 `mingw32`); this has not been done or tested.
 - **APE limits.** It needs a 64-bit OS and Windows 8+. That's why the legacy exe exists. On macOS, APE starts through the shell, and Apple Silicon needs Cosmopolitan's small loader. The spike (Phase 5, step 18) checks this early.

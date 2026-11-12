@@ -18,7 +18,7 @@ build/cablemouse-linux: main.c common/protocol.c backends/linux.c backend.h
 legacy: build/cablemouse-legacy.exe
 build/cablemouse-legacy.exe: main.c common/protocol.c backends/win.c backend.h
 	@mkdir -p build
-	i686-w64-mingw32-gcc $(CFLAGS) -DLEGACY_WIN32 -o $@ main.c common/protocol.c backends/win.c -lwinmm -luser32 -static
+	i686-w64-mingw32-gcc $(CFLAGS) -DLEGACY_WIN32 -o $@ main.c common/protocol.c backends/win.c -lwinmm -luser32 -static -s
 
 # Universal APE; backend selection via IsWindows()/IsXnu()/IsLinux() is still TODO (needs cosmocc spike).
 ape:
