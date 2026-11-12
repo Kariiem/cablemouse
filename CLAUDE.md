@@ -20,6 +20,7 @@ Any protocol change must update: `PLAN.md`, `proto/MouseProtocol.kt`, `helper/co
 - Helper host tests: `make -C helper test`
 - Windows legacy exe: `make -C helper legacy` (needs `i686-w64-mingw32-gcc`)
 - Universal APE: `make -C helper ape` (needs `cosmocc` on PATH)
+- Full release (tests + helper + signed APK + checksums into `dist/`): `./scripts/build-release.sh`. The repo has a Gradle wrapper (`./gradlew`); on this machine the system `gradle` (same 9.3.1) avoids a 130 MB download.
 - Signed release APK: `gradle :app:assembleRelease` (needs git-ignored `keystore.properties`; the keystore lives in `~/.cablemouse/` and must be backed up, since losing it blocks app updates). Release artifacts are published unversioned as `app-release.apk` and `cablemouse-legacy.exe`.
 - Android: `gradle :app:testDebugUnitTest`, `gradle :app:assembleDebug`. Local toolchain: `export JAVA_HOME=~/opt/temurin-21 PATH=~/opt/temurin-21/bin:$PATH`; Android SDK (cmdline-tools, platform 35, build-tools 35.0.0, platform-tools/adb) is in `~/opt/android-sdk`, referenced by the git-ignored `local.properties`. No Compose yet; add it with the UI phase.
 
