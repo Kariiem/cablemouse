@@ -6,3 +6,4 @@ helper/build/
 .project.el
 keystore.properties
 *.jks
+dist/
