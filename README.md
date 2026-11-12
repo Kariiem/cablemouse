@@ -190,4 +190,4 @@ The asset names are unversioned on purpose, so the "latest release" download lin
 
 ## License
 
-No license has been chosen yet.
+[MIT](LICENSE).
