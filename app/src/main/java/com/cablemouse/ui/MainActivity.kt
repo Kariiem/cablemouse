@@ -8,6 +8,8 @@ import android.media.midi.MidiDevice
 import android.media.midi.MidiDeviceInfo
 import android.media.midi.MidiInputPort
 import android.media.midi.MidiManager
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -24,6 +26,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
+import com.cablemouse.export.HelperExporter
 import com.cablemouse.proto.FrameScheduler
 import com.cablemouse.proto.MouseProtocol
 import kotlin.concurrent.thread
@@ -34,9 +37,12 @@ import kotlin.concurrent.thread
  */
 class MainActivity : Activity() {
     private lateinit var manager: MidiManager
-    private lateinit var pal: Palette
+    internal lateinit var pal: Palette
     private lateinit var sound: ClickSound
     private lateinit var settings: View
+    private lateinit var onboarding: View
+    internal lateinit var helperStatus: TextView
+    internal var exportMessage = "Not copied yet."
     private lateinit var devicesBox: LinearLayout
     private lateinit var log: TextView
     private lateinit var statusText: TextView
@@ -66,8 +72,8 @@ class MainActivity : Activity() {
     private var travel = 0f
     private var fingers = 0
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun dpf(v: Int) = v * resources.displayMetrics.density
+    internal fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    internal fun dpf(v: Int) = v * resources.displayMetrics.density
     private fun prefs() = getSharedPreferences("cablemouse", MODE_PRIVATE)
 
     private val midiCallback = object : MidiManager.DeviceCallback() {
@@ -111,6 +117,11 @@ class MainActivity : Activity() {
             visibility = if (savedInstanceState?.getBoolean("settings") == true) View.VISIBLE else View.GONE
         }
         root.addView(settings, FrameLayout.LayoutParams(-1, -1))
+        onboarding = buildOnboarding(onDone = { prefs().edit().putBoolean("onboarded", true).apply(); onboarding.visibility = View.GONE },
+            onCopyAgain = { exportHelpers(force = true) }).apply {
+            visibility = if (prefs().getBoolean("onboarded", false)) View.GONE else View.VISIBLE
+        }
+        root.addView(onboarding, FrameLayout.LayoutParams(-1, -1))
         // targetSdk 35 is edge-to-edge: keep content out from under the status/nav bars and cutout.
         root.setOnApplyWindowInsetsListener { v, insets ->
             @Suppress("DEPRECATION")
@@ -128,6 +139,7 @@ class MainActivity : Activity() {
         manager.registerDeviceCallback(midiCallback, ui)
         startSendLoop()
         refresh(autoOpen = true)
+        exportHelpers(force = false)
     }
 
     override fun onResume() { super.onResume(); if (::settings.isInitialized && port == null) refresh(autoOpen = true) }
@@ -139,7 +151,11 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        if (::settings.isInitialized && settings.visibility == View.VISIBLE) showSettings(false) else super.onBackPressed()
+        when {
+            ::onboarding.isInitialized && onboarding.visibility == View.VISIBLE -> onboarding.visibility = View.GONE
+            ::settings.isInitialized && settings.visibility == View.VISIBLE -> showSettings(false)
+            else -> super.onBackPressed()
+        }
     }
 
     override fun onDestroy() {
@@ -287,12 +303,12 @@ class MainActivity : Activity() {
 
     private fun showSettings(show: Boolean) { settings.visibility = if (show) View.VISIBLE else View.GONE }
 
-    private fun label(t: String, sizeSp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+    internal fun label(t: String, sizeSp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = t; textSize = sizeSp; setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
 
-    private fun pill(t: String, primary: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
+    internal fun pill(t: String, primary: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
         text = t
         gravity = Gravity.CENTER
         textSize = 14f
@@ -348,6 +364,7 @@ class MainActivity : Activity() {
             devicesBox = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
             addView(devicesBox)
             addView(pill("Refresh devices") { refresh(autoOpen = true) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+            addView(pill("Setup guide") { onboarding.visibility = View.VISIBLE }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         })
 
         add(card("Touchpad") {
@@ -423,6 +440,44 @@ class MainActivity : Activity() {
             (headerDot.background as android.graphics.drawable.GradientDrawable).setColor(if (connected) pal.ok else pal.off)
             statusText.text = msg
         }
+    }
+
+    // ---------- helper export (MTP delivery) ----------
+
+    private fun versionCode(): Long {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        @Suppress("DEPRECATION")
+        return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    }
+
+    private fun setExportMessage(m: String) {
+        exportMessage = m
+        ui.post { if (::helperStatus.isInitialized) helperStatus.text = m }
+    }
+
+    /** Copies the bundled helper into Download/CableMouse. [force] re-copies even if this version already did. */
+    internal fun exportHelpers(force: Boolean) {
+        if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_STORAGE)
+            return
+        }
+        setExportMessage("Copying helper…")
+        thread {
+            val code = versionCode()
+            val r = if (force) HelperExporter.exportAll(this, code) else HelperExporter.exportIfNeeded(this, code)
+            when {
+                r == null -> setExportMessage("The helper is in Download/${HelperExporter.DIR} on this phone.")
+                r.error != null -> setExportMessage("Couldn't copy the helper: ${r.error}")
+                else -> setExportMessage("Copied ${r.copied.joinToString()} to Download/${HelperExporter.DIR} on this phone.")
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_STORAGE) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) exportHelpers(force = true)
+        else setExportMessage("Storage permission was denied, so the helper wasn't copied. Get it from the GitHub Releases page instead.")
     }
 
     // ---------- MIDI ----------
@@ -520,5 +575,6 @@ class MainActivity : Activity() {
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1
         const val THEME_DARK = 2
+        const val REQ_STORAGE = 7
     }
 }

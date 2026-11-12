@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.software.midi" android:required="true" />
+    <!-- Only needed on Android 9 and older to write Download/CableMouse; newer versions use MediaStore. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <application
         android:label="Cable Mouse"
         android:icon="@mipmap/ic_launcher"
