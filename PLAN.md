@@ -45,7 +45,7 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
 
 ### Phase 1: Android app skeleton
 5. Create an Android Studio project (`com.cablemouse`): Kotlin, Compose, minSdk 23 (needed for `android.media.midi`), with `<uses-feature android:name="android.software.midi">`.
-6. `MidiLink.kt`: watch for MIDI devices with `MidiManager.registerDeviceCallback`, pick the USB peripheral device, open its input port, and expose `send(bytes)` and a connected state.
+6. MIDI link (implemented inside `ui/MainActivity.kt`): watch for MIDI devices with `MidiManager.registerDeviceCallback`, pick the USB peripheral device, open its input port, and expose `send(bytes)` and a connected state.
 7. Status screen that says "Not in MIDI mode, switch USB to MIDI" (with how-to steps) or "Connected".
 
 ### Phase 2: Protocol and mouse logic (shared, unit-tested)
@@ -99,7 +99,7 @@ One C codebase builds two outputs:
 28. Absolute positioning mode (phone screen maps to PC screen).
 
 ## Critical files (to be created)
-- `app/src/main/java/com/cablemouse/midi/MidiLink.kt`: USB-peripheral MIDI port
+- `app/src/main/java/com/cablemouse/ui/MainActivity.kt`: USB-peripheral MIDI port and touchpad
 - `app/src/main/java/com/cablemouse/proto/MouseProtocol.kt` and `FrameScheduler.kt`
 - `app/src/main/java/com/cablemouse/ui/TouchpadScreen.kt`, `OnboardingScreen.kt`
 - `app/src/main/java/com/cablemouse/export/HelperExporter.kt`: MediaStore copy to Download/CableMouse
