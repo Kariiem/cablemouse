@@ -18,6 +18,21 @@ Without root, Android can't present itself as a USB HID mouse. So the design is 
   - Android Open Accessory (AOA): needs a WinUSB driver on Windows.
   - ADB: needs developer mode, plus a driver on Windows.
 
+## Status (2026-11-13)
+Legend: **verified** = confirmed by the user on real hardware (Android 15 phone, Windows 10/11 PC); **built** = implemented, builds, unit-tested where possible, not confirmed on hardware; **todo** = not done.
+
+| Phase | State | Notes |
+| --- | --- | --- |
+| 0. Transport spike (steps 1-3) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test) exists in the app's Diagnostics but its result was never reported. |
+| 1. App skeleton | **verified** | Plain Views, no Compose. MIDI link lives in `ui/MainActivity.kt` (a separate `MidiLink.kt` was written first and later deleted as dead code). |
+| 2. Protocol + scheduler | **verified** | `MouseProtocol.kt`, `FrameScheduler.kt`, JVM tests; shared vectors with the C decoder. |
+| 3. Touchpad UI | **verified**, partly | Move, tap = left click, two-finger tap = right click, two-finger scroll, Left/Right buttons with click sound, pointer/scroll speed, invert scroll, dark/light/system theme. **todo:** tap-and-hold drag, haptics, keep-screen-on. |
+| 4. Helper delivery over MTP | **built** | Exporter + setup guide; the file appears in the phone's `Download/CableMouse`. Copy to a PC over MTP not verified (blocked on the user's work PC; they use the GitHub release). Only the Windows exe is bundled. |
+| 5. PC helper | Windows **verified**; Linux **built**; macOS/APE **todo** | Windows back end hardened for unplug/replug. Linux X11 back end untested. macOS is a stub; the Cosmopolitan APE (`cablemouse.com`) and its spike (step 18) were not started. |
+| 6. Robustness | mostly **verified** | App auto-reconnects on device add/remove; heartbeat every 500 ms; helper releases buttons after 2 s without heartbeat; version mismatch warning exists. |
+| 7. Extras | **todo** | Keyboard mode, gyro air-mouse, absolute positioning. |
+| Release | **done** | Public repo https://github.com/Kariiem/cablemouse, MIT, release `v1.0` with signed APK, Windows exe and checksums. |
+
 ## Architecture
 ```
 Android app (Kotlin)                          PC helper (C): cablemouse.com (APE, all modern OSes)
@@ -44,7 +59,7 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
 4. Measure the round trip: send 500 messages per second and check that none are dropped and none are delayed.
 
 ### Phase 1: Android app skeleton
-5. Create an Android Studio project (`com.cablemouse`): Kotlin, Compose, minSdk 23 (needed for `android.media.midi`), with `<uses-feature android:name="android.software.midi">`.
+5. Create the Android project (`com.cablemouse`): Kotlin, plain Views (Compose was dropped to keep dependencies minimal), minSdk 23 (needed for `android.media.midi`), with `<uses-feature android:name="android.software.midi">`.
 6. MIDI link (implemented inside `ui/MainActivity.kt`): watch for MIDI devices with `MidiManager.registerDeviceCallback`, pick the USB peripheral device, open its input port, and expose `send(bytes)` and a connected state.
 7. Status screen that says "Not in MIDI mode, switch USB to MIDI" (with how-to steps) or "Connected".
 
@@ -59,11 +74,11 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
 13. Settings (DataStore): sensitivity, acceleration, scroll speed, invert scroll. Add keep-screen-on and haptic feedback.
 
 ### Phase 4: Delivering the helper over MTP
-14. Bundle the two prebuilt helpers in `app/src/main/assets/helpers/`:
+14. Bundle the prebuilt helpers in `app/src/main/assets/helpers/` (currently only `cablemouse-legacy.exe` + README; `cablemouse.com` is not built yet):
     - `cablemouse.com`: the universal APE for any 64-bit Windows 8+, Linux or macOS machine.
     - `cablemouse-legacy.exe`: for 32-bit Windows and Windows XP/Vista/7.
     - `README.txt`, which explains which file to run.
-15. On first launch, and whenever the app version changes, copy them through `MediaStore.Downloads` into `Download/CableMouse/` so they show up over MTP.
+15. On first launch, and whenever the app version changes, copy them through `MediaStore.Downloads` into `Download/CableMouse/` (API 23-28: direct write with the storage permission) so they show up over MTP.
 16. In-app onboarding:
     1. Leave USB on File Transfer.
     2. On the PC, open Phone → Download → CableMouse and copy `cablemouse.com`. On an old 32-bit or XP/7 PC, copy `cablemouse-legacy.exe` instead.
@@ -98,10 +113,9 @@ One C codebase builds two outputs:
 27. Gyroscope "air mouse" mode.
 28. Absolute positioning mode (phone screen maps to PC screen).
 
-## Critical files (to be created)
-- `app/src/main/java/com/cablemouse/ui/MainActivity.kt`: USB-peripheral MIDI port and touchpad
+## Critical files
 - `app/src/main/java/com/cablemouse/proto/MouseProtocol.kt` and `FrameScheduler.kt`
-- `app/src/main/java/com/cablemouse/ui/TouchpadScreen.kt`, `OnboardingScreen.kt`
+- `app/src/main/java/com/cablemouse/ui/MainActivity.kt` (touchpad, settings, MIDI port), `Onboarding.kt`, `Palette.kt`, `ClickSound.kt`
 - `app/src/main/java/com/cablemouse/export/HelperExporter.kt`: MediaStore copy to Download/CableMouse
 - `helper/main.c`, `helper/common/protocol.c`, `helper/backends/{win,linux,mac}.c`, `helper/Makefile` (cosmocc and MinGW targets)
 
