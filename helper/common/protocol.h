@@ -5,7 +5,10 @@
 #define CM_PROTOCOL_VERSION 1
 
 typedef enum { EV_MOVE_X, EV_MOVE_Y, EV_SCROLL, EV_BTN_DOWN, EV_BTN_UP, EV_HEARTBEAT,
-               EV_KEY_CHAR, EV_KEY_SPECIAL, EV_MODS, EV_KEY_HID } cm_ev_type;
+               EV_KEY_CHAR, EV_KEY_SPECIAL, EV_MODS, EV_KEY_HID, EV_MOVE_ABS } cm_ev_type;
+
+/* EV_MOVE_ABS value: (x << 14) | y with x, y in 0..CM_ABS_MAX, fractions of the primary screen. */
+#define CM_ABS_MAX 16383
 
 /* EV_MODS value: bit mask of held modifiers. EV_KEY_HID value: USB HID keyboard usage (0x04..0x73), tapped
  * with the modifiers currently held. */
@@ -21,7 +24,7 @@ typedef struct { cm_ev_type type; int value; } cm_event;
 
 /* Streaming MIDI decoder: feed raw bytes one at a time (handles running status,
  * ignores realtime bytes and SysEx). Pure, no I/O. */
-typedef struct { uint8_t status; uint8_t d1; int have; uint32_t cp; } cm_decoder;
+typedef struct { uint8_t status; uint8_t d1; int have; uint32_t cp; uint32_t ax, ay; } cm_decoder;
 
 void cm_decoder_init(cm_decoder *d);
 /* Returns 1 and fills *ev if this byte completed an event, else 0. */

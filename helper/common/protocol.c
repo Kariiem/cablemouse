@@ -1,6 +1,6 @@
 #include "protocol.h"
 
-void cm_decoder_init(cm_decoder *d) { d->status = 0; d->d1 = 0; d->have = 0; d->cp = 0; }
+void cm_decoder_init(cm_decoder *d) { d->status = 0; d->d1 = 0; d->have = 0; d->cp = 0; d->ax = d->ay = 0; }
 
 int cm_decoder_feed(cm_decoder *d, uint8_t b, cm_event *ev) {
     if (b >= 0xF8) return 0;                 /* realtime: may appear anywhere */
@@ -28,6 +28,13 @@ int cm_decoder_feed(cm_decoder *d, uint8_t b, cm_event *ev) {
             if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return 0;
             ev->type = EV_KEY_CHAR; ev->value = (int)cp; return 1;
         }
+        /* Absolute position: x high/low, y high/low; the last message commits it. */
+        case 0x16: d->ax = (uint32_t)b << 7; return 0;
+        case 0x17: d->ax |= b; return 0;
+        case 0x18: d->ay = (uint32_t)b << 7; return 0;
+        case 0x19:
+            d->ay |= b;
+            ev->type = EV_MOVE_ABS; ev->value = (int)((d->ax << 14) | d->ay); return 1;
         case 0x14: ev->type = EV_MODS; ev->value = b & CM_MOD_ALL; return (b & ~CM_MOD_ALL) == 0;
         case 0x15:
             if (b < CM_HID_MIN || b > CM_HID_MAX) return 0;

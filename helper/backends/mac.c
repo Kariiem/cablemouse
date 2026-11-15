@@ -10,4 +10,5 @@ void backend_key_char(uint32_t cp) { (void)cp; }
 void backend_key(int k) { (void)k; }
 void backend_mods(int m) { (void)m; }
 void backend_key_hid(int u) { (void)u; }
+void backend_move_abs(int x, int y) { (void)x; (void)y; }
 void backend_close(void) {}

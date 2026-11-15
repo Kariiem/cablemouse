@@ -41,7 +41,8 @@ The header has three buttons: **Cable Mouse** (settings), **Mode** and **Protoco
   - **Mouse + typing**: the touchpad plus the phone's own keyboard (see Typing).
   - **Keyboard**: a full-screen PC keyboard (see Typing).
   - **Gyro**: the cursor follows the phone's rotation (see Gyro mode).
-- Under each mode the picker shows that mode's on/off options as toggle buttons (filled = on): *Invert scroll* (Mouse), *Caps = Ctrl* (Mouse + typing, Keyboard), *Sticky modifiers* (Keyboard), *Hold to aim* (Gyro). Tapping one changes it **for the current session only**. The same switches in Settings are the **defaults** loaded at every start.
+  - **Absolute**: touch a spot on a pad shaped like the PC screen and the cursor jumps there (see Absolute mode).
+- Under each mode the picker shows that mode's on/off options as toggle buttons (filled = on): *Invert scroll* (Mouse), *Caps = Ctrl* (Mouse + typing, Keyboard), *Sticky modifiers* (Keyboard), *Hold to aim* (Gyro), *Tap to click* (Absolute). Tapping one changes it **for the current session only**. The same switches in Settings are the **defaults** loaded at every start.
 - **Protocol** picks how the phone talks to the PC: **Wired** (USB cable, MIDI) today; **Bluetooth** is listed but disabled until it is built.
 
 ### Gestures and buttons
@@ -75,6 +76,10 @@ Pick **Gyro** in Mode. A large circle sits in the middle, with Left/Right button
 - *Hold to aim* (default on; Mode picker button or Settings → **Gyro mode**): the cursor follows the phone only while you hold the circle; use Left/Right to click. With it off, the cursor always follows the phone and the circle becomes a left-click button (hold it while turning to drag).
 - *Gyro speed* sets how many pixels the cursor moves per 10° of rotation.
 
+### Absolute mode
+
+Pick **Absolute** in Mode (it switches the phone to landscape). The pad is drawn in the shape of your PC screen, and where a finger touches the pad is where the cursor goes on the PC's **primary** screen, like a drawing tablet. Dragging moves it; Left/Right sit below the pad, and a quick tap clicks (the *Tap to click* option). The phone can't know the PC's screen shape, so choose 16:9, 16:10, 4:3 or 21:9 in Settings → **Absolute mode** (16:9 by default). On a multi-monitor PC only the primary screen is used. Positions are sent as fractions of the screen, so the PC's resolution doesn't matter.
+
 ### Settings
 
 Tap the **Cable Mouse** pill at the top. You can set pointer speed, scroll speed and direction, the click feedback, the keyboard options, and the theme (System, Light or Dark). The Diagnostics card has a test note, a stream test and a clearable log.
@@ -101,7 +106,7 @@ The helper reconnects by itself after an unplug/replug. If the cursor feels too 
 - **macOS:** not implemented yet (a stub exists).
 - **Single-file universal helper (`cablemouse.com`, Cosmopolitan APE):** planned in [`PLAN.md`](PLAN.md), not built yet.
 - **Unsigned helper:** SmartScreen and some antivirus/EDR products flag unsigned programs that inject input. The source is small (`helper/`) and the build is reproducible, so you can build it yourself and compare checksums.
-- Not implemented: absolute positioning, Bluetooth. Gyro mode is verified on hardware. Keyboard input exists but is only verified on the Windows helper; the Linux helper's typing is untested and macOS has none.
+- Not implemented: Bluetooth. Absolute mode maps to the primary screen only (Windows verified; the Linux helper's version is untested). Gyro mode is verified on hardware. Keyboard input exists but is only verified on the Windows helper; the Linux helper's typing is untested and macOS has none.
 - Keyboard mode has no Insert/PageUp/PageDown/Home/End keys (they exist in the protocol; Mouse + typing mode's key row has Home and End).
 
 ## Development
@@ -209,6 +214,7 @@ MIDI channel 1, 3-byte messages, all data bytes 7-bit:
 | `B0 13 k` | tap a special key: 1 Backspace, 2 Enter, 3 Tab, 4 Esc, 5 Delete, 6 Left, 7 Right, 8 Up, 9 Down, 10 Home, 11 End, 12 PageUp, 13 PageDown |
 | `B0 14 m` | modifiers held right now, bit mask 1 Ctrl, 2 Shift, 4 Alt, 8 Win; the helper presses/releases the difference. 0 releases all (also done on a 2 s heartbeat timeout) |
 | `B0 15 u` | tap the physical key with USB HID keyboard usage `u` (0x04..0x73) with the modifiers currently held |
+| `B0 16 xh`, `B0 17 xl`, `B0 18 yh`, `B0 19 yl` | put the cursor at an absolute position: `x = xh<<7 \| xl`, `y = yh<<7 \| yl`, each 0..16383 as a fraction of the primary screen; the last message commits it (sent as one 12-byte write) |
 
 New messages are additive: a helper that doesn't know a controller number ignores it, so the protocol version stays 1.
 

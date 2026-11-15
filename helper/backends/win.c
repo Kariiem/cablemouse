@@ -14,6 +14,9 @@
 #include "../backend.h"
 #include "../common/protocol.h"
 
+#ifndef MOUSEEVENTF_ABSOLUTE
+#define MOUSEEVENTF_ABSOLUTE 0x8000
+#endif
 #ifndef MOUSEEVENTF_WHEEL
 #define MOUSEEVENTF_WHEEL 0x0800
 #endif
@@ -124,6 +127,11 @@ static void mouse_send(DWORD flags, DWORD data, LONG dx, LONG dy) {
     INPUT in; memset(&in, 0, sizeof in);
     in.type = INPUT_MOUSE; in.mi.dwFlags = flags; in.mi.mouseData = data; in.mi.dx = dx; in.mi.dy = dy;
     SendInput(1, &in, sizeof in);
+}
+
+/* Absolute position as a fraction of the primary monitor (no VIRTUALDESK flag, so other monitors are not used). */
+void backend_move_abs(int x, int y) {
+    mouse_send(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, 0, (LONG)((long long)x * 65535 / CM_ABS_MAX), (LONG)((long long)y * 65535 / CM_ABS_MAX));
 }
 
 void backend_move(int dx, int dy) { mouse_send(MOUSEEVENTF_MOVE, 0, dx, dy); }

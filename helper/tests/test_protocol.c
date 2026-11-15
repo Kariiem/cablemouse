@@ -3,7 +3,7 @@
 #include <string.h>
 #include "../common/protocol.h"
 
-static const char *names[] = {"move_x", "move_y", "scroll", "down", "up", "heartbeat", "key_char", "key_special", "mods", "key_hid"};
+static const char *names[] = {"move_x", "move_y", "scroll", "down", "up", "heartbeat", "key_char", "key_special", "mods", "key_hid", "move_abs"};
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argc > 1 ? argv[1] : "../testvectors/protocol.txt", "r");

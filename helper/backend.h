@@ -13,5 +13,6 @@ void backend_key_char(uint32_t code_point);  /* type one Unicode character */
 void backend_key(int key);                   /* press + release a special key (CM_KEY_* in common/protocol.h) */
 void backend_mods(int mask);                 /* hold exactly these modifiers (CM_MOD_*), releasing the others */
 void backend_key_hid(int usage);             /* press + release the key with this USB HID usage */
+void backend_move_abs(int x, int y);         /* x, y in 0..CM_ABS_MAX: a fraction of the primary screen */
 void backend_close(void);
 #endif

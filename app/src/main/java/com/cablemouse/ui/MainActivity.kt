@@ -57,6 +57,9 @@ class MainActivity : Activity(), KeySink {
     private lateinit var mainScreen: View
     private lateinit var keys: KeysScreen
     private lateinit var gyro: GyroScreen
+    private lateinit var absolute: AbsoluteScreen
+    private var absAspect = 0
+    private var absTapClick = true
     private var gyroHold = true
     private var gyroPer10Deg = GYRO_DEFAULT
     private var capsAsCtrl = false
@@ -134,6 +137,8 @@ class MainActivity : Activity(), KeySink {
         capsAsCtrl = p.getBoolean("capsCtrl", false)
         stickyMods = p.getBoolean("stickyMods", false)
         gyroHold = p.getBoolean("gyroHold", true)
+        absAspect = p.getInt("absAspect", 0).coerceIn(0, ABS_ASPECTS.size - 1)
+        absTapClick = p.getBoolean("absTapClick", true)
         gyroPer10Deg = p.getFloat("gyroPer10Deg", GYRO_DEFAULT)
         themeMode = p.getInt("theme", THEME_SYSTEM)
 
@@ -154,6 +159,9 @@ class MainActivity : Activity(), KeySink {
         gyro = GyroScreen(this, { sendBytes(it) }, { clickFeedback(it) }, { dx, dy -> scheduler.addMove(dx, dy) }, { setMode(MODE_MOUSE) })
         gyro.view.setPadding(dp(14), dp(10), dp(14), dp(14))
         root.addView(gyro.view, FrameLayout.LayoutParams(-1, -1))
+        absolute = AbsoluteScreen(this, { sendBytes(it) }, { setMode(MODE_MOUSE) })
+        absolute.view.setPadding(dp(14), dp(10), dp(14), dp(14))
+        root.addView(absolute.view, FrameLayout.LayoutParams(-1, -1))
         picker = Picker(this)
         root.addView(picker.view, FrameLayout.LayoutParams(-1, -1))
         keyCapture = KeyCaptureView(this, this) { capsAsCtrl }
@@ -365,12 +373,14 @@ class MainActivity : Activity(), KeySink {
             MODE_MOUSE_TYPING -> setKeyboard(false)
             MODE_KEYBOARD -> showKeys(false)
             MODE_GYRO -> showGyro(false)
+            MODE_ABSOLUTE -> showAbsolute(false)
         }
         mode = m
         when (m) {
             MODE_MOUSE_TYPING -> setKeyboard(true)
             MODE_KEYBOARD -> showKeys(true)
             MODE_GYRO -> showGyro(true)
+            MODE_ABSOLUTE -> showAbsolute(true)
         }
     }
 
@@ -384,6 +394,8 @@ class MainActivity : Activity(), KeySink {
                 option("Sticky modifiers", { stickyMods }) { stickyMods = it })),
             Picker.Item("Gyro", "Move the cursor by turning the phone", options = listOf(
                 option("Hold to aim", { gyroHold }) { gyroHold = it })),
+            Picker.Item("Absolute", "Touch a spot and the cursor jumps there (landscape)", options = listOf(
+                option("Tap to click", { absTapClick }) { absTapClick = it })),
         ),
         mode,
     ) { setMode(it) }
@@ -417,6 +429,19 @@ class MainActivity : Activity(), KeySink {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         keys.view.visibility = if (show) View.VISIBLE else View.GONE
+        mainScreen.visibility = if (show) View.GONE else View.VISIBLE
+    }
+
+    /** Absolute mode: a pad shaped like the PC screen (see [AbsoluteScreen]). Landscape gives it room. */
+    private fun showAbsolute(show: Boolean) {
+        if (show) {
+            if (keyboardOn) setKeyboard(false)
+            absolute.rebuild(ABS_ASPECTS[absAspect].second, absTapClick)
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        absolute.view.visibility = if (show) View.VISIBLE else View.GONE
         mainScreen.visibility = if (show) View.GONE else View.VISIBLE
     }
 
@@ -670,6 +695,25 @@ class MainActivity : Activity(), KeySink {
                 { prefs().edit().putFloat("gyroPer10Deg", it.toFloat()).apply() }))
         })
 
+        add(card("Absolute mode") {
+            addView(label("Shape of the PC screen (the pad is drawn in this shape):", 14f, pal.muted))
+            val group = RadioGroup(this@MainActivity).apply { orientation = RadioGroup.HORIZONTAL }
+            ABS_ASPECTS.forEachIndexed { idx, (name, _) ->
+                group.addView(RadioButton(this@MainActivity).apply {
+                    id = 3000 + idx; text = name; setTextColor(pal.text); buttonTintList = pal.accentTint()
+                    isChecked = absAspect == idx
+                    setPadding(dp(2), dp(6), dp(10), dp(6))
+                })
+            }
+            group.setOnCheckedChangeListener { _, id ->
+                absAspect = id - 3000; prefs().edit().putInt("absAspect", absAspect).apply()
+            }
+            addView(group)
+            addView(toggle("Tap the pad to click", absTapClick) {
+                absTapClick = it; prefs().edit().putBoolean("absTapClick", it).apply()
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        })
+
         add(card("Keyboard") {
             addView(toggle("Caps Lock acts as Ctrl (keyboard mode, and a hardware keyboard in typing mode)", capsAsCtrl) {
                 capsAsCtrl = it; prefs().edit().putBoolean("capsCtrl", it).apply()
@@ -850,7 +894,7 @@ class MainActivity : Activity(), KeySink {
         }
     }
 
-    private companion object {
+    internal companion object {
         const val DEFAULT_PX_PER_INCH = 700f
         const val SENS_MIN = 100
         const val SENS_MAX = 2500
@@ -860,6 +904,9 @@ class MainActivity : Activity(), KeySink {
         const val MODE_MOUSE_TYPING = 1
         const val MODE_KEYBOARD = 2
         const val MODE_GYRO = 3
+        const val MODE_ABSOLUTE = 4
+        /** Pad shapes offered for Absolute mode: the PC screen's width / height. */
+        val ABS_ASPECTS = listOf("16:9" to 16f / 9f, "16:10" to 1.6f, "4:3" to 4f / 3f, "21:9" to 21f / 9f)
         const val TRANSPORT_WIRED = 0
         const val TRANSPORT_BLUETOOTH = 1
         const val GYRO_DEFAULT = 260f      // cursor px per 10 degrees of rotation

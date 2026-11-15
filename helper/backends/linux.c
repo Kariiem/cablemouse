@@ -26,6 +26,10 @@ static int (*XSync_)(void *, int);
 static int (*XFree_)(void *);
 
 static unsigned (*XKeysymToKeycode_)(void *, unsigned long);
+static int (*XTestFakeMotionEvent_)(void *, int, int, int, unsigned long);
+static int (*XDefaultScreen_)(void *);
+static int (*XDisplayWidth_)(void *, int);
+static int (*XDisplayHeight_)(void *, int);
 
 static int find_device(const char *hint, char *out, size_t n) {
     if (hint && hint[0] == '/') { snprintf(out, n, "%s", hint); return 0; }
@@ -54,6 +58,8 @@ static int init_x(void) {
     XDisplayKeycodes_ = dlsym(x11, "XDisplayKeycodes"); XGetKeyboardMapping_ = dlsym(x11, "XGetKeyboardMapping");
     XChangeKeyboardMapping_ = dlsym(x11, "XChangeKeyboardMapping"); XSync_ = dlsym(x11, "XSync");
     XFree_ = dlsym(x11, "XFree"); XKeysymToKeycode_ = dlsym(x11, "XKeysymToKeycode");
+    XTestFakeMotionEvent_ = dlsym(xt, "XTestFakeMotionEvent"); XDefaultScreen_ = dlsym(x11, "XDefaultScreen");
+    XDisplayWidth_ = dlsym(x11, "XDisplayWidth"); XDisplayHeight_ = dlsym(x11, "XDisplayHeight");
     dpy = XOpenDisplay_ ? XOpenDisplay_(NULL) : NULL;
     if (!dpy) { fprintf(stderr, "Cannot open X display (Wayland sessions need uinput; not supported yet).\n"); return -1; }
     return 0;
@@ -160,6 +166,14 @@ void backend_mods(int mask) {
         if (want != have && kc) XTestFakeKeyEvent_(dpy, kc, want, 0);
     }
     cur = mask & CM_MOD_ALL;
+    XFlush_(dpy);
+}
+
+/* Absolute position on the default X screen (the whole X screen, which is the primary display on a single-monitor setup). */
+void backend_move_abs(int x, int y) {
+    if (!XTestFakeMotionEvent_ || !XDefaultScreen_ || !XDisplayWidth_ || !XDisplayHeight_) return;
+    int scr = XDefaultScreen_(dpy), w = XDisplayWidth_(dpy, scr), h = XDisplayHeight_(dpy, scr);
+    XTestFakeMotionEvent_(dpy, scr, (int)((long long)x * (w - 1) / CM_ABS_MAX), (int)((long long)y * (h - 1) / CM_ABS_MAX), 0);
     XFlush_(dpy);
 }
 

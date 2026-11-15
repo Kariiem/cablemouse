@@ -32,6 +32,7 @@ class ProtocolTest {
                 "key_special" -> MouseProtocol.key(value)
                 "mods" -> MouseProtocol.mods(value)
                 "key_hid" -> MouseProtocol.keyHid(value)
+                "move_abs" -> MouseProtocol.moveAbs(value shr 14, value and 0x3FFF)
                 else -> error(ev)
             }
             assertEquals(bytes, hex(got))
@@ -53,6 +54,10 @@ class ProtocolTest {
             com.cablemouse.ui.KeyLayout.rows(caps).forEachIndexed { i, row ->
                 assertEquals("row $i caps=$caps", 15f, row.sumOf { it.width.toDouble() }.toFloat(), 0.001f)
             }
+    }
+
+    @Test fun moveAbsClampsToRange() {
+        assertEquals("B0 16 7F B0 17 7F B0 18 00 B0 19 00", hex(MouseProtocol.moveAbs(99999, -5)))
     }
 
     @Test fun gyroTurnLeftMovesCursorLeft() {

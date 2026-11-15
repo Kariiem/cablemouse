@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 /** A small "pick one" card shown over the current screen (used for the Mode and Protocol buttons). */
@@ -30,8 +31,6 @@ class Picker(private val a: MainActivity) {
         val card = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(a.dp(16), a.dp(14), a.dp(16), a.dp(10))
-            background = pal.rounded(pal.card, a.dpf(22), pal.stroke, 1)
-            isClickable = true                                   // taps on the card must not dismiss it
         }
         card.addView(a.label(title, 18f, pal.text, bold = true))
         items.forEachIndexed { i, item ->
@@ -60,8 +59,16 @@ class Picker(private val a: MainActivity) {
             }
             card.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = a.dp(8) })
         }
-        view.addView(card, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
-            marginStart = a.dp(14); marginEnd = a.dp(14); topMargin = a.dp(64)
+        // The card scrolls when it is taller than the screen (landscape); the rounded background clips it.
+        val scroll = ScrollView(a).apply {
+            background = pal.rounded(pal.card, a.dpf(22), pal.stroke, 1)
+            clipToOutline = true
+            isClickable = true                                   // taps on the card must not dismiss it
+            isVerticalScrollBarEnabled = false
+            addView(card, FrameLayout.LayoutParams(-1, -2))
+        }
+        view.addView(scroll, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            marginStart = a.dp(14); marginEnd = a.dp(14); topMargin = a.dp(64); bottomMargin = a.dp(14)
         })
         view.visibility = View.VISIBLE
     }

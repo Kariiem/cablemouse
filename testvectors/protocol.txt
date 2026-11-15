@@ -1,5 +1,5 @@
 # bytes (hex) | event | value
-# events: move_x move_y scroll down up heartbeat key_char key_special mods key_hid
+# events: move_x move_y scroll down up heartbeat key_char key_special mods key_hid move_abs
 B0 01 46 | move_x | 6
 B0 01 00 | move_x | -64
 B0 01 7F | move_x | 63
@@ -22,3 +22,7 @@ B0 14 0B | mods | 11
 B0 15 04 | key_hid | 4
 B0 15 39 | key_hid | 57
 B0 15 73 | key_hid | 115
+B0 16 00 B0 17 00 B0 18 00 B0 19 00 | move_abs | 0
+B0 16 40 B0 17 00 B0 18 40 B0 19 00 | move_abs | 134225920
+B0 16 07 B0 17 68 B0 18 0F B0 19 50 | move_abs | 16386000
+B0 16 7F B0 17 7F B0 18 7F B0 19 7F | move_abs | 268435455

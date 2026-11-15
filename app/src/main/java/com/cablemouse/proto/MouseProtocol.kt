@@ -16,6 +16,11 @@ object MouseProtocol {
     private const val CC_CHAR_LO = 0x12      // bits 6..0, commits the character
     private const val CC_KEY = 0x13          // special key, value = KEY_*
     private const val CC_MODS = 0x14         // held modifiers, bit mask of MOD_*
+    private const val CC_ABS_XH = 0x16       // absolute position: x bits 13..7, x bits 6..0, y bits 13..7, y bits 6..0 (commits)
+    private const val CC_ABS_XL = 0x17
+    private const val CC_ABS_YH = 0x18
+    private const val CC_ABS_YL = 0x19
+    const val ABS_MAX = 16383
     private const val CC_HID = 0x15          // tap the key with this USB HID usage (0x04..0x73)
 
     const val MOD_CTRL = 1
@@ -84,6 +89,12 @@ object MouseProtocol {
     fun keyHid(usage: Int): ByteArray {
         require(usage in 0x04..0x73)
         return cc(CC_HID, usage)
+    }
+
+    /** Puts the cursor at a fraction of the primary screen: x, y in 0..[ABS_MAX]. 12 bytes, send in one write. */
+    fun moveAbs(x: Int, y: Int): ByteArray {
+        val cx = x.coerceIn(0, ABS_MAX); val cy = y.coerceIn(0, ABS_MAX)
+        return cc(CC_ABS_XH, cx shr 7) + cc(CC_ABS_XL, cx and 0x7F) + cc(CC_ABS_YH, cy shr 7) + cc(CC_ABS_YL, cy and 0x7F)
     }
 
     fun heartbeat(): ByteArray = cc(CC_HEARTBEAT, VERSION)

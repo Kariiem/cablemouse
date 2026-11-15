@@ -91,6 +91,7 @@ int main(int argc, char **argv) {
                 case EV_KEY_SPECIAL: backend_key(ev.value); break;
                 case EV_MODS: backend_mods(ev.value); mods_held = ev.value; break;
                 case EV_KEY_HID: backend_key_hid(ev.value); break;
+                case EV_MOVE_ABS: backend_move_abs(ev.value >> 14, ev.value & CM_ABS_MAX); break;
                 case EV_HEARTBEAT:
                     if (ev.value != CM_PROTOCOL_VERSION)
                         printf("warning: phone protocol v%d, helper v%d\n", ev.value, CM_PROTOCOL_VERSION);
