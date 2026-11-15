@@ -19,19 +19,39 @@ Without root, Android can't present itself as a USB HID mouse. So the design is 
   - ADB: needs developer mode, plus a driver on Windows.
 
 ## Status (2026-11-15)
+The released version is **v1.1**. Everything marked verified below was verified on v1.1. The commits after v1.1 (see "Unreleased changes" under the table) are built and tested by the automated tests only.
+
 Legend: **verified** = confirmed by the user on real hardware (Android 15 phone, Windows 10/11 PC); **built** = implemented, builds, unit-tested where possible, not confirmed on hardware; **todo** = not done.
 
 | Phase | State | Notes |
 | --- | --- | --- |
 | 0. Transport spike (steps 1-4) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test) **passed** on the user's Windows 10/11 PC (2026-11-15): 5000 messages in 10.00 s (500/s), none missing or repeated, longest gap 7.5 ms, no gap over 20 ms, measured by `cablemouse-legacy.exe --stream-check` (the gap includes Windows scheduling on the PC side). The app aborts a stream if its MIDI port closes, so two shorter runs before it ended early (they also lost nothing). |
-| 1. App skeleton | **verified** | Plain Views, no Compose. MIDI link lives in `ui/MainActivity.kt` (a separate `MidiLink.kt` was written first and later deleted as dead code). |
-| 2. Protocol + scheduler | **verified** | `MouseProtocol.kt`, `FrameScheduler.kt`, JVM tests; shared vectors with the C decoder. |
-| 3. Touchpad UI | **verified**, partly | Move, tap = left click, two-finger tap = right click, two-finger scroll, tap-then-touch drag (verified by the user), Left/Right buttons with selectable feedback (silent / audible click / vibration), pointer/scroll speed, invert scroll, dark/light/system theme. **todo:** keep-screen-on. |
+| 1. App skeleton | **verified** | Plain Views, no Compose. The MIDI link is `link/MidiLink.kt`, behind the `link.Transport` interface; `MainActivity` only wires the parts. |
+| 2. Protocol + scheduler | **verified** | `MouseProtocol.kt`, `FrameScheduler.kt`, JVM tests; shared vectors with the C decoder (`testvectors/protocol.txt`). |
+| 3. Touchpad UI | **verified**, partly | Move, tap = left click, two-finger tap = right click, two-finger scroll, tap-then-touch drag (verified by the user), Left/Right buttons with selectable feedback (silent / audible click / vibration), pointer/scroll speed, invert scroll, dark/light/system theme. **Not built** from the original plan: pointer acceleration, an on-screen middle button (the protocol has it), keep-screen-on outside Gyro mode. |
 | 4. Helper delivery over MTP | **built** | Exporter + setup guide; the file appears in the phone's `Download/CableMouse`. Copy to a PC over MTP not verified (blocked on the user's work PC; they use the GitHub release). Only the Windows exe is bundled. |
-| 5. PC helper | Windows **verified**; Linux **built**; macOS/APE **todo** | Windows back end hardened for unplug/replug. Linux X11 back end untested. macOS is a stub; the Cosmopolitan APE (`cablemouse.com`) and its spike (step 18) were not started. |
+| 5. PC helper | Windows **verified**; Linux **built**; macOS/APE **todo** | Windows back end hardened for unplug/replug. Linux X11 back end never run with a phone (its read loop and `--stream-check` were run against a FIFO, see Verification). macOS is a stub; the Cosmopolitan APE (`cablemouse.com`) and its spike (step 18) were not started. |
 | 6. Robustness | mostly **verified** | App auto-reconnects on device add/remove; heartbeat every 500 ms; helper releases buttons after 2 s without heartbeat; version mismatch warning exists. |
 | 7. Extras | keyboard, gyro and absolute **verified** (Windows); rest **todo** | Header buttons **Mode** (Mouse default / Mouse + typing / Keyboard / Gyro / Absolute) and **Protocol** (Wired now; Bluetooth listed, disabled). *Mouse + typing* (system keyboard forwarded as Unicode/special keys, hardware-keyboard shortcuts) and *Keyboard* (full-screen QWERTY, physical keys + held modifiers, forced landscape, key repeat) verified on Windows by the user. Settings: Caps as Ctrl, sticky modifiers (both default off); every on/off mode option is also a toggle button under its mode in the Mode picker (session only; Settings hold the defaults). *Gyro*: round centre button, hold-to-aim setting (default on), speed slider; uses the gyroscope + gravity sensors (`proto/GyroMath.kt`, unit tested), no protocol change; verified by the user. *Absolute*: pad in the PC screen's shape (16:9 / 16:10 / 4:3 / 21:9 setting), forced landscape, primary monitor only, tap-to-click option; verified by the user. The Mode picker scrolls (landscape). Linux typing and absolute are built but untested; macOS none. **todo:** Bluetooth transport, Insert/PgUp/PgDn keys on the on-screen keyboard. |
 | Release | **done** | Public repo https://github.com/Kariiem/cablemouse, MIT, releases `v1.0` and `v1.1` (latest, 2026-11-15) with signed APK, Windows exe and checksums. |
+
+### Unreleased changes since v1.1 (built; not yet verified on hardware)
+A review of the whole history (2026-11-15) fixed the following. Each needs one check on the phone and PC before it is called verified.
+- **Windows helper:** it crashed when `midiInOpen` failed (for example "device busy", code 4) because the status message had mismatched format arguments. Check: start a second copy of the helper while the first holds the device; the second must print `midiInOpen failed (code 4)` and keep retrying.
+- **Helper `--stream-check`:** injects nothing at all now (before, only horizontal moves were skipped). Status output is unbuffered.
+- **App, stream test:** `Thread.onSpinWait()` (API 33) crashed the stream test on Android 6-12. Check on the Android 15 phone: the stream test still passes at 500 msg/s.
+- **App, connection:** the USB port was opened twice at start-up (start + first resume). Check: cold start with USB already in MIDI mode connects, and the Diagnostics log has no `returned null (busy?)` line; replug still reconnects.
+- **App, buttons:** a Left/Right button held while leaving its screen (mode switch, app paused) is released on the PC.
+- **Linux helper:** prints why it cannot open the device, and treats end of file as "device lost".
+
+### Open items, in suggested order
+1. Verify the unreleased changes above on hardware, then release.
+2. Run the Linux helper with a real phone on an X11 desktop (move, click, scroll, typing, absolute, unplug/replug).
+3. Keyboard mode: Insert / PageUp / PageDown / Home / End keys (the protocol and both back ends already handle them).
+4. An msvcrt-based MinGW build of the legacy exe for Windows XP/Vista/7 without the UCRT update (see Risks).
+5. Bluetooth transport: a second `link.Transport` on the phone and a matching input source in the helper.
+6. Cosmopolitan APE (`cablemouse.com`), starting with the spike in step 18, and the macOS back end.
+7. Helper delivery over MTP to a PC is built but was never observed end to end (blocked on the user's work PC).
 
 ## Architecture
 ```
@@ -56,7 +76,8 @@ MainActivity            wires everything; owns the window (insets, orientation, 
 ```
 - The screens call only `Transport.send/addMove/addScroll`. A Bluetooth transport (the disabled Protocol entry) means writing a second `Transport`; no screen changes.
 - A mode is a `ModeScreen` registered in `MainActivity`; options shown in the Mode menu live in `ModeMenu`; persisted defaults live in `Settings` and are edited in `SettingsScreen`.
-- Helper (C): `common/protocol` (pure decoder) and `common/stream_check` (pure, tested) · `backend.h` (platform interface) with `backends/{win,linux,mac}.c` · `main.c` (policy only).
+- Helper (C): `common/protocol` (pure decoder) and `common/stream_check` (pure, tested) · `common/status` (console status lines without repeats) · `backend.h` (platform interface) with `backends/{win,linux,mac}.c` · `main.c` (policy only).
+- Whoever holds input down on the PC releases it: each `ModeScreen` on `exit()`/`onPause()` (touchpad drag, Left/Right buttons, modifiers), and the helper on a 2 s heartbeat timeout or a lost device.
 
 ### Wire protocol (MIDI channel 1, 3-byte messages, 7-bit safe)
 - `B0 01 v`: dx, where v = dx + 64 (range −64..63). Larger moves are split into several messages.
@@ -72,6 +93,7 @@ MainActivity            wires everything; owns the window (insets, orientation, 
   - `B0 15 u`: tap the key with USB HID usage `u` (0x04..0x73) with the held modifiers. Windows maps it to a virtual key, Linux to a keysym and the real keycode.
 
 ## Small-step plan
+These are the original steps. Where the build ended up different, the step says so in *italics*; the Status table above is the authority on what is done.
 
 ### Phase 0: Feasibility spikes (prove the transport before building anything)
 1. On the phone, open Settings → Connected devices → USB and select **MIDI**. On a Linux PC run `amidi -l`, and on Windows look in Device Manager under "Sound, video and game controllers". Confirm a MIDI device appears.
@@ -81,7 +103,7 @@ MainActivity            wires everything; owns the window (insets, orientation, 
 
 ### Phase 1: Android app skeleton
 5. Create the Android project (`com.cablemouse`): Kotlin, plain Views (Compose was dropped to keep dependencies minimal), minSdk 23 (needed for `android.media.midi`), with `<uses-feature android:name="android.software.midi">`.
-6. MIDI link (implemented inside `ui/MainActivity.kt`): watch for MIDI devices with `MidiManager.registerDeviceCallback`, pick the USB peripheral device, open its input port, and expose `send(bytes)` and a connected state.
+6. MIDI link (`link/MidiLink.kt`, implementing `link.Transport`): watch for MIDI devices with `MidiManager.registerDeviceCallback`, pick the USB peripheral device, open its input port, and expose `send(bytes)` and a connected state.
 7. Status screen that says "Not in MIDI mode, switch USB to MIDI" (with how-to steps) or "Connected".
 
 ### Phase 2: Protocol and mouse logic (shared, unit-tested)
@@ -90,9 +112,9 @@ MainActivity            wires everything; owns the window (insets, orientation, 
 
 ### Phase 3: Touchpad UI
 10. Full-screen touchpad. One-finger drag moves the cursor.
-11. Tap is a left click, two-finger tap is a right click, two-finger vertical drag scrolls, and tap-and-hold drags (button held down).
-12. On-screen L/M/R buttons along the bottom.
-13. Settings (DataStore): sensitivity, acceleration, scroll speed, invert scroll. Add keep-screen-on and haptic feedback.
+11. Tap is a left click, two-finger tap is a right click, two-finger vertical drag scrolls, and tap-and-hold drags (button held down). *Built as tap-then-touch: tap, touch again within 0.3 s and drag.*
+12. On-screen L/M/R buttons along the bottom. *Built as Left/Right above the pad; no middle button.*
+13. Settings (DataStore): sensitivity, acceleration, scroll speed, invert scroll. Add keep-screen-on and haptic feedback. *Built on SharedPreferences (`settings/Settings.kt`, no extra dependency) with a live value and a saved default per setting; no acceleration; the screen is kept on in Gyro mode only.*
 
 ### Phase 4: Delivering the helper over MTP
 14. Bundle the prebuilt helpers in `app/src/main/assets/helpers/` (currently only `cablemouse-legacy.exe` + README; `cablemouse.com` is not built yet):
@@ -130,7 +152,7 @@ One C codebase builds two outputs:
 25. Add version negotiation through the heartbeat value. The helper warns when versions don't match.
 
 ### Phase 7 (optional extras)
-26. Keyboard/text mode, with keys sent as note numbers or SysEx and injected through SendInput, CGEvent or XTest.
+26. Keyboard/text mode, with keys sent as note numbers or SysEx and injected through SendInput, CGEvent or XTest. *Done with control-change messages instead (see Wire protocol): Mouse + typing and Keyboard modes.*
 27. Gyroscope "air mouse" mode (done: `GyroScreen.kt`, `GyroMath.kt`).
 28. Absolute positioning mode (phone pad maps to the PC's primary screen) — done.
 
@@ -138,12 +160,14 @@ One C codebase builds two outputs:
 - `app/src/main/java/com/cablemouse/proto/` (protocol encoder, batching, gyro maths) and `link/` (`Transport`, `MidiLink`)
 - `app/src/main/java/com/cablemouse/settings/Settings.kt` and `ui/` (`MainActivity` wiring, `ModeController`, the screens)
 - `app/src/main/java/com/cablemouse/export/HelperExporter.kt`: MediaStore copy to Download/CableMouse
-- `helper/main.c`, `helper/common/{protocol,stream_check}.c`, `helper/backends/{win,linux,mac}.c`, `helper/Makefile` (cosmocc and MinGW targets)
+- `helper/main.c`, `helper/common/{protocol,stream_check,status}.c`, `helper/backends/{win,linux,mac}.c`, `helper/Makefile` (cosmocc and MinGW targets)
 - `testvectors/protocol.txt`: shared by the C and Kotlin protocol tests
 
 ## Verification
 - Phase 0 step 3 proves the transport: bytes from the app reach a PC MIDI monitor.
-- Unit tests: Kotlin tests for encoding, chunking and the scheduler, and C tests for the decoder, using the same test vectors in both.
+- Unit tests: Kotlin tests for encoding, chunking, the scheduler, gyro maths, the key layout and settings, and C tests for the decoder and the stream check, using the same test vectors in both.
+- Android lint (`:app:lintDebug`) runs in CI and in the release script and must report no errors. It is what catches calls to APIs newer than minSdk 23.
+- The Linux helper can be exercised without a phone: `mkfifo f; helper/build/cablemouse-linux "$PWD/f" --stream-check` and write protocol bytes into `f` (it needs an X display to start, and in this mode injects nothing). This covers `main.c` and the read path, not XTest injection.
 - End-to-end matrix:
   - `cablemouse-legacy.exe` on Windows 10/11 (verified by the user) and on Windows 7/8.1 with KB2999226 (not tested), and later `cablemouse.com` on Windows 10/11, all as a standard (non-admin) user. Windows XP/Vista are not covered until an msvcrt build exists.
   - A Linux X11 desktop and macOS (if available), both with the same `cablemouse.com` file.
