@@ -1,4 +1,4 @@
-# Builds and tests everything on every push and pull request. It does not sign or publish anything
+# Builds, tests and lints everything on every push and pull request. It does not sign or publish anything
 # (releases stay manual, see README: scripts/build-release.sh and `gh release create`).
 name: CI
 
@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -36,10 +36,11 @@ jobs:
           set +o pipefail   # `yes` is cut off by sdkmanager, which would fail the pipe
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Android unit tests and debug APK
-        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      # Lint fails the build on errors only (for example an API newer than minSdk); warnings are reported.
+      - name: Android unit tests, lint and debug APK
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk

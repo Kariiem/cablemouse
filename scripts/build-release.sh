@@ -12,9 +12,9 @@ echo "==> Helper: tests, Windows exe, bundle into app assets"
 make -C helper test
 make -C helper assets
 
-echo "==> Android: unit tests and signed release APK"
+echo "==> Android: unit tests, lint and signed release APK"
 # GRADLE=gradle uses an installed Gradle instead of downloading the wrapper distribution.
-"${GRADLE:-./gradlew}" --no-daemon :app:testDebugUnitTest :app:assembleRelease
+"${GRADLE:-./gradlew}" --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
 
 echo "==> Collecting release files"
 rm -rf dist && mkdir dist
