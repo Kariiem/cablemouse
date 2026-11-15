@@ -82,6 +82,8 @@ Pick **Absolute** in Mode (it switches the phone to landscape). The pad is drawn
 
 ### Settings
 
+The setup guide (Settings → Connection → Setup guide) has a tappable link to the GitHub Releases page and a Copy link button, for PCs where file transfer is blocked.
+
 Tap the **Cable Mouse** pill at the top. You can set pointer speed, scroll speed and direction, the click feedback, the keyboard options, and the theme (System, Light or Dark). The Diagnostics card has a test note, a stream test and a clearable log.
 
 ### Troubleshooting
@@ -95,6 +97,8 @@ The helper prints what it is doing:
 | `midiInOpen failed (code 4…)` | Another program (a MIDI monitor, a music app) is holding the device. Close it. |
 | `MIDI device opened; waiting for phone...` | Ready. Open the app on the phone. |
 | `disconnected (no heartbeat)` | The app was closed or the cable unplugged. Held buttons are released. |
+
+To check the link itself, run the helper from a terminal as `cablemouse-legacy.exe --stream-check`, then tap **Settings → Diagnostics → Stream test** on the phone. The phone sends 5000 messages at 500 per second and the helper prints how many arrived, how many were missing or repeated, and the longest gap, ending in `PASS` or `FAIL`. The mouse does not move during the check.
 
 The helper reconnects by itself after an unplug/replug. If the cursor feels too slow or fast, change the pointer speed in the app's settings.
 
@@ -176,6 +180,10 @@ Build everything in one go:
 ```
 
 This runs the helper tests and Kotlin unit tests, builds the helper and the signed APK, verifies the signature and writes `dist/app-release.apk`, `dist/cablemouse-legacy.exe` and `dist/SHA256SUMS.txt`. The Windows exe is built reproducibly (no embedded timestamp), so the same source gives the same checksum.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: the C tests, the Linux and Windows (MinGW) helper builds, the Kotlin unit tests and a debug APK (uploaded as an artifact). It signs and publishes nothing; releases stay manual. It has not run on GitHub yet.
 
 ### Tests
 

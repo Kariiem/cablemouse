@@ -23,7 +23,7 @@ Legend: **verified** = confirmed by the user on real hardware (Android 15 phone,
 
 | Phase | State | Notes |
 | --- | --- | --- |
-| 0. Transport spike (steps 1-3) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test) exists in the app's Diagnostics but its result was never reported. |
+| 0. Transport spike (steps 1-3) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test): the app's Diagnostics has the test and the helper now has `--stream-check`, which verifies the sequence and prints PASS/FAIL; the result is still to be reported by the user. |
 | 1. App skeleton | **verified** | Plain Views, no Compose. MIDI link lives in `ui/MainActivity.kt` (a separate `MidiLink.kt` was written first and later deleted as dead code). |
 | 2. Protocol + scheduler | **verified** | `MouseProtocol.kt`, `FrameScheduler.kt`, JVM tests; shared vectors with the C decoder. |
 | 3. Touchpad UI | **verified**, partly | Move, tap = left click, two-finger tap = right click, two-finger scroll, tap-then-touch drag (verified by the user), Left/Right buttons with selectable feedback (silent / audible click / vibration), pointer/scroll speed, invert scroll, dark/light/system theme. **todo:** keep-screen-on. |
@@ -36,7 +36,7 @@ Legend: **verified** = confirmed by the user on real hardware (Android 15 phone,
 ## Architecture
 ```
 Android app (Kotlin)                          PC helper (C): cablemouse.com (APE, all modern OSes)
-                                               + cablemouse-legacy.exe (32-bit Windows XP/7)
+                                               + cablemouse-legacy.exe (32-bit Windows; needs the UCRT, see Risks)
  touchpad gestures                             MIDI input from "Android USB Peripheral"
    → mouse frames                                → decode messages
    → MidiInputPort (USB peripheral) ──USB-MIDI──→ → OS cursor/click/scroll injection
@@ -82,19 +82,19 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
 ### Phase 4: Delivering the helper over MTP
 14. Bundle the prebuilt helpers in `app/src/main/assets/helpers/` (currently only `cablemouse-legacy.exe` + README; `cablemouse.com` is not built yet):
     - `cablemouse.com`: the universal APE for any 64-bit Windows 8+, Linux or macOS machine.
-    - `cablemouse-legacy.exe`: for 32-bit Windows and Windows XP/Vista/7.
+    - `cablemouse-legacy.exe`: the 32-bit Windows helper. As built today it needs the Universal C Runtime: Windows 10/11, or 7/8.1 with KB2999226. XP/Vista need a different build (see Risks, not done).
     - `README.txt`, which explains which file to run.
 15. On first launch, and whenever the app version changes, copy them through `MediaStore.Downloads` into `Download/CableMouse/` (API 23-28: direct write with the storage permission) so they show up over MTP.
 16. In-app onboarding:
     1. Leave USB on File Transfer.
-    2. On the PC, open Phone → Download → CableMouse and copy `cablemouse.com`. On an old 32-bit or XP/7 PC, copy `cablemouse-legacy.exe` instead.
+    2. On the PC, open Phone → Download → CableMouse and copy `cablemouse.com`. On a 32-bit PC or one that can't run the APE, copy `cablemouse-legacy.exe` instead (today it is the only helper; see Risks for the Windows versions it runs on).
     3. Switch USB to MIDI.
     4. Run the helper. On Linux/macOS: `sh ./cablemouse.com`, or `chmod +x` it first.
 
 ### Phase 5: PC helper (C, no installer, no admin)
 One C codebase builds two outputs:
 - **`cablemouse.com`**: built with Cosmopolitan `cosmocc` as an Actually Portable Executable. At runtime it picks a back end with `IsWindows()` / `IsXnu()` / `IsLinux()`. Windows DLLs, macOS frameworks and `libXtst` are loaded through `cosmo_dlopen`/`cosmo_dlsym`.
-- **`cablemouse-legacy.exe`**: the Windows back end alone, built with MinGW i686 (`-D LEGACY_WIN32`) and linked directly against `winmm`/`user32`. It runs on 32-bit Windows and on XP/Vista/7.
+- **`cablemouse-legacy.exe`**: the Windows back end alone, built with MinGW i686 (`-D LEGACY_WIN32`) and linked directly against `winmm`/`user32`. It is the only helper built so far: verified on Windows 10/11; Windows 7/8.1 need KB2999226 (not tested); XP/Vista are not supported by the current build. Supporting them is a todo that needs an msvcrt-based MinGW (see Risks).
 
 17. Repo folder `helper/`. Put the protocol decoder in `common/protocol.c` and add host unit tests for it. `main.c` picks a back end through a small interface: `backend_open()`, `backend_read_midi()`, `backend_move()`, `backend_button()`, `backend_scroll()`, and for the keyboard `backend_key_char()`, `backend_key()`, `backend_mods()`, `backend_key_hid()`.
 18. **Spike, before the back ends:** build a "hello" APE with `cosmocc` that calls `cosmo_dlopen("user32.dll")` → `SetCursorPos` on Windows, and does the macOS and Linux equivalents. Confirm it runs on all three. If dlopen doesn't work on some OS, fall back to shipping a native binary for that OS only.
@@ -129,7 +129,7 @@ One C codebase builds two outputs:
 - Phase 0 step 3 proves the transport: bytes from the app reach a PC MIDI monitor.
 - Unit tests: Kotlin tests for encoding, chunking and the scheduler, and C tests for the decoder, using the same test vectors in both.
 - End-to-end matrix:
-  - Windows XP/7 with `cablemouse-legacy.exe`, and Windows 10/11 with `cablemouse.com`, both as a standard (non-admin) user.
+  - `cablemouse-legacy.exe` on Windows 10/11 (verified by the user) and on Windows 7/8.1 with KB2999226 (not tested), and later `cablemouse.com` on Windows 10/11, all as a standard (non-admin) user. Windows XP/Vista are not covered until an msvcrt build exists.
   - A Linux X11 desktop and macOS (if available), both with the same `cablemouse.com` file.
   - Each one tested for move, click, drag, scroll and unplug/replug.
 - First-run test on a fresh PC: copy the helper over MTP, switch to MIDI, run it, and confirm the cursor moves. Nothing else is installed.
@@ -142,4 +142,4 @@ One C codebase builds two outputs:
 - **Linux Wayland** blocks injecting input through XTest. It needs uinput access, so that case is documented.
 - **Some antivirus tools** flag programs that inject input, and polyglot APE files get flagged more often. Keep the helper small and its source open.
 - **Legacy exe and the C runtime.** The `cablemouse-legacy.exe` built on the current dev machine links the Universal C Runtime (`api-ms-win-crt-*`), so it needs Windows 10/11, or Windows 7/8.1 with the UCRT update (KB2999226). Windows XP/Vista need a build from an msvcrt-based MinGW (for example MSYS2 `mingw32`); this has not been done or tested.
-- **APE limits.** It needs a 64-bit OS and Windows 8+. That's why the legacy exe exists. On macOS, APE starts through the shell, and Apple Silicon needs Cosmopolitan's small loader. The spike (Phase 5, step 18) checks this early.
+- **APE limits.** It needs a 64-bit OS and Windows 8+. That's why the legacy exe target exists (with the runtime caveat above). On macOS, APE starts through the shell, and Apple Silicon needs Cosmopolitan's small loader. The spike (Phase 5, step 18) checks this early.

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "backend.h"
 #include "common/protocol.h"
 
@@ -18,6 +19,46 @@
 
 static int held[3];
 static int mods_held;
+
+/* --stream-check: verify the phone's "Stream test" (5000 move_x messages, 2 ms apart, value cycling 1..127)
+ * instead of moving the cursor. Counts missing and repeated messages and the longest gap between messages. */
+static int stream_check;
+static struct { long n, missing, repeats, slow; int prev; double first, last, maxgap; } sc;
+
+static double now_ms(void) {
+#ifdef _WIN32
+    LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c);
+    return 1000.0 * (double)c.QuadPart / (double)f.QuadPart;
+#else
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+    return 1000.0 * t.tv_sec + t.tv_nsec / 1e6;
+#endif
+}
+
+static void stream_feed(int value) {
+    int b = value + 64;                     /* the phone sent b = 1 + n % 127 */
+    double t = now_ms();
+    if (sc.n) {
+        int want = sc.prev % 127 + 1;
+        if (b == sc.prev) sc.repeats++;
+        else if (b != want) sc.missing += (b - want + 127) % 127;
+        double gap = t - sc.last;
+        if (gap > sc.maxgap) sc.maxgap = gap;
+        if (gap > 20) sc.slow++;
+    } else sc.first = t;
+    sc.prev = b; sc.last = t; sc.n++;
+}
+
+/* Called regularly: once no message has arrived for a second, the stream is over, so print the result. */
+static void stream_poll(void) {
+    if (!stream_check || !sc.n || now_ms() - sc.last < 1000) return;
+    double secs = (sc.last - sc.first) / 1000.0;
+    printf("stream: received %ld messages in %.2f s (%.0f/s); missing %ld, repeated %ld; longest gap %.1f ms, gaps over 20 ms: %ld\n",
+           sc.n, secs, secs > 0 ? (sc.n - 1) / secs : 0.0, sc.missing, sc.repeats, sc.maxgap, sc.slow);
+    printf("stream: %s\n", sc.missing == 0 && sc.repeats == 0 ? "PASS: nothing dropped" : "FAIL: messages were lost or repeated");
+    fflush(stdout);
+    memset(&sc, 0, sizeof sc);
+}
 static char **g_argv;
 
 static void release_all(void) {
@@ -46,9 +87,14 @@ static void restart_self(void) {
 }
 
 int main(int argc, char **argv) {
-    (void)argc; g_argv = argv;
-    const char *hint = argc > 1 ? argv[1] : NULL;
+    g_argv = argv;
+    const char *hint = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--stream-check") == 0) stream_check = 1;
+        else if (!hint) hint = argv[i];
+    }
     printf("Cable Mouse helper (protocol v%d). Switch the phone's USB mode to MIDI.\n", CM_PROTOCOL_VERSION);
+    if (stream_check) printf("Stream check mode: on the phone open Settings > Diagnostics > Stream test. The mouse is not moved.\n");
     int had_open = 0, fail_ms = 0, quiet = 0;
     for (;;) {
         while (backend_open(hint) != 0) {
@@ -62,6 +108,7 @@ int main(int argc, char **argv) {
         cm_decoder dec; cm_decoder_init(&dec);
         int connected = 0, idle = 0, lost = 0;
         for (;;) {
+            stream_poll();
             uint8_t buf[256];
             int n = backend_read_midi(buf, sizeof buf, POLL_MS);
             if (n < 0) { lost = 1; break; }
@@ -82,7 +129,7 @@ int main(int argc, char **argv) {
                 idle = 0;
                 if (!connected) { connected = 1; printf("connected\n"); }
                 switch (ev.type) {
-                case EV_MOVE_X: dx += ev.value; break;
+                case EV_MOVE_X: if (stream_check) stream_feed(ev.value); else dx += ev.value; break;
                 case EV_MOVE_Y: dy += ev.value; break;
                 case EV_SCROLL: sc += ev.value; break;
                 case EV_BTN_DOWN: backend_button(ev.value, 1); held[ev.value] = 1; break;

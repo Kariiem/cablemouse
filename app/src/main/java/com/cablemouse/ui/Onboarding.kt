@@ -1,11 +1,20 @@
 package com.cablemouse.ui
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+
+const val RELEASES_URL = "https://github.com/Kariiem/cablemouse/releases/latest"
 
 /** First-run guide: how to get the helper onto the PC and start using the phone as a mouse. */
 internal fun MainActivity.buildOnboarding(onDone: () -> Unit, onCopyAgain: () -> Unit): View {
@@ -52,9 +61,21 @@ internal fun MainActivity.buildOnboarding(onDone: () -> Unit, onCopyAgain: () ->
     status.addView(helperStatus)
     status.addView(pill("Copy helper again") { onCopyAgain() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
     status.addView(label(
-        "File transfer blocked, or no file access on that PC? Download the helper from this project's GitHub Releases page on another device instead.",
+        "File transfer blocked, or no file access on that PC? Download cablemouse-legacy.exe from this project's GitHub Releases page on another device instead:",
         13f, pal.muted
     ).apply { setPadding(0, dp(12), 0, 0) })
+    status.addView(label(RELEASES_URL.removePrefix("https://"), 13f, pal.accent, bold = true).apply {
+        setPadding(0, dp(6), 0, 0)
+        isClickable = true
+        setOnClickListener { openReleases() }
+    })
+    val links = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+    links.addView(pill("Open releases page") { openReleases() }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+    links.addView(pill("Copy link") {
+        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Cable Mouse releases", RELEASES_URL))
+        Toast.makeText(this, "Link copied", Toast.LENGTH_SHORT).show()
+    }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(6) })
+    status.addView(links, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
     add(status)
 
     add(pill("Done", primary = true) { onDone() }, top = 18)
@@ -63,5 +84,14 @@ internal fun MainActivity.buildOnboarding(onDone: () -> Unit, onCopyAgain: () ->
         setBackgroundColor(pal.bg)
         isClickable = true          // swallow touches so the pad below never sees them
         addView(col)
+    }
+}
+
+/** Opens the GitHub Releases page in the phone's browser. */
+internal fun MainActivity.openReleases() {
+    try {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(this, "No browser found. The link: $RELEASES_URL", Toast.LENGTH_LONG).show()
     }
 }
