@@ -22,6 +22,7 @@ class MidiLink(context: Context, private val main: Handler = Handler(Looper.getM
 
     private var device: MidiDevice? = null
     private var deviceId = -1
+    private var openingId = -1                 // device whose asynchronous open is in flight (-1 = none)
     @Volatile private var port: MidiInputPort? = null
     @Volatile private var running = false
     @Volatile private var streaming = false
@@ -33,6 +34,7 @@ class MidiLink(context: Context, private val main: Handler = Handler(Looper.getM
             main.postDelayed({ if (port == null) refresh(autoOpen = true) }, 400)
         }
         override fun onDeviceRemoved(info: MidiDeviceInfo) {
+            if (info.id == openingId) openingId = -1
             if (info.id == deviceId) {
                 closePort()
                 state(false, "Phone disconnected. Reconnect the cable and set USB to MIDI.")
@@ -66,6 +68,7 @@ class MidiLink(context: Context, private val main: Handler = Handler(Looper.getM
     fun stop() {
         running = false
         runCatching { manager.unregisterDeviceCallback(deviceCallback) }
+        openingId = -1
         closePort()
     }
 
@@ -96,10 +99,19 @@ class MidiLink(context: Context, private val main: Handler = Handler(Looper.getM
         manager.devices.firstOrNull { it.id == id }?.let { open(it) }
     }
 
+    /**
+     * Opening is asynchronous, and both start-up and onResume ask for it, so a request for the device that is
+     * already being opened is dropped, and a result that is no longer wanted (a newer request, or [stop]) is closed.
+     */
     private fun open(info: MidiDeviceInfo) {
+        if (openingId == info.id) return
         closePort()
+        openingId = info.id
         manager.openDevice(info, { dev ->
+            val wanted = running && openingId == info.id
+            if (openingId == info.id) openingId = -1
             if (dev == null) { log("openDevice failed"); return@openDevice }
+            if (!wanted) { dev.close(); return@openDevice }
             val p = dev.openInputPort(0)
             if (p == null) { log("openInputPort(0) returned null (busy?)"); dev.close(); return@openDevice }
             device = dev; deviceId = info.id; port = p
@@ -157,7 +169,7 @@ class MidiLink(context: Context, private val main: Handler = Handler(Looper.getM
                 try { p.send(msg, 0, 3) } catch (e: Exception) { log("send failed: $e"); break }
                 n++
                 val due = start + n * 2_000_000L
-                while (System.nanoTime() < due) Thread.onSpinWait()
+                while (System.nanoTime() < due) { /* busy-wait: sleep() is too coarse to pace 2 ms steps */ }
             }
             streaming = false
             log("sent $n msgs in ${(System.nanoTime() - start) / 1_000_000} ms (expect values cycling 1..127)")
