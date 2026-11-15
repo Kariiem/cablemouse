@@ -54,11 +54,12 @@ static void release_all(void) {
 /* Applies one decoded event. Motion is only collected here; the caller applies it after the whole read. */
 static void apply_event(const cm_event *ev, motion *m) {
     static int warned_version;
+    if (stream_check_mode && ev->type != EV_HEARTBEAT) {      /* the check only counts; nothing is injected */
+        if (ev->type == EV_MOVE_X) cm_stream_feed(&stream, ev->value, now_ms());
+        return;
+    }
     switch (ev->type) {
-    case EV_MOVE_X:
-        if (stream_check_mode) cm_stream_feed(&stream, ev->value, now_ms());
-        else m->dx += ev->value;
-        break;
+    case EV_MOVE_X: m->dx += ev->value; break;
     case EV_MOVE_Y: m->dy += ev->value; break;
     case EV_SCROLL: m->scroll += ev->value; break;
     case EV_BTN_DOWN: backend_button(ev->value, 1); buttons_held[ev->value] = 1; break;
@@ -83,14 +84,13 @@ static void report_stream_if_finished(void) {
     char line[400];
     cm_stream_summary(&stream, line, sizeof line);
     printf("stream: %s\n", line);
-    fflush(stdout);
     cm_stream_reset(&stream);
 }
 
 /* Last-resort recovery: winmm can keep a stale device list/handle until the process restarts,
  * so after the device has been gone for a while we simply start a fresh copy of ourselves. */
 static void restart_self(void) {
-    printf("Restarting helper to refresh the MIDI device list...\n"); fflush(stdout);
+    printf("Restarting helper to refresh the MIDI device list...\n");
 #ifdef _WIN32
     char path[MAX_PATH]; char cmd[2048];
     GetModuleFileNameA(NULL, path, sizeof path);
@@ -140,13 +140,14 @@ static int serve_device(void) {
 
 int main(int argc, char **argv) {
     g_argv = argv;
+    setvbuf(stdout, NULL, _IONBF, 0);                         /* status lines show up at once, also through a pipe */
     const char *hint = NULL;                                  /* part of the MIDI device name, or a device path */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--stream-check") == 0) stream_check_mode = 1;
         else if (!hint) hint = argv[i];
     }
     printf("Cable Mouse helper (protocol v%d). Switch the phone's USB mode to MIDI.\n", CM_PROTOCOL_VERSION);
-    if (stream_check_mode) printf("Stream check mode: on the phone open Settings > Diagnostics > Stream test. The mouse is not moved.\n");
+    if (stream_check_mode) printf("Stream check mode: on the phone open Settings > Diagnostics > Stream test. No mouse or keyboard input is injected.\n");
 
     int had_open = 0, fail_ms = 0, quiet = 0;
     for (;;) {

@@ -98,7 +98,7 @@ The helper prints what it is doing:
 | `MIDI device opened; waiting for phone...` | Ready. Open the app on the phone. |
 | `disconnected (no heartbeat)` | The app was closed or the cable unplugged. Held buttons are released. |
 
-To check the link itself, run the helper from a terminal as `cablemouse-legacy.exe --stream-check`, then tap **Settings → Diagnostics → Stream test** on the phone. The phone sends 5000 messages at 500 per second and the helper prints how many arrived, how many were missing or repeated, and the longest gap, ending in `PASS` or `FAIL`. The mouse does not move during the check.
+To check the link itself, run the helper from a terminal as `cablemouse-legacy.exe --stream-check`, then tap **Settings → Diagnostics → Stream test** on the phone. The phone sends 5000 messages at 500 per second and the helper prints how many arrived, how many were missing or repeated, and the longest gap, ending in `PASS` or `FAIL`. Nothing is injected on the PC during the check (no cursor movement, clicks or keys).
 
 The helper reconnects by itself after an unplug/replug. If the cursor feels too slow or fast, change the pointer speed in the app's settings.
 
