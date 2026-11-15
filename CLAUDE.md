@@ -2,7 +2,7 @@
 
 Phone + USB cable = mouse for a PC. The phone sends mouse data as USB-MIDI messages (Android "MIDI" USB mode, no root). A small portable PC helper reads the MIDI input and injects cursor/click/scroll events.
 
-- Repo: https://github.com/Kariiem/cablemouse (public, MIT). Release `v1.0` holds `app-release.apk`, `cablemouse-legacy.exe`, `SHA256SUMS.txt` (unversioned names on purpose, so `releases/latest/download/<name>` links in the README keep working).
+- Repo: https://github.com/Kariiem/cablemouse (public, MIT). Latest release is `v1.1` (published 2026-11-15; `v1.0` is the first). Each release holds `app-release.apk`, `cablemouse-legacy.exe`, `SHA256SUMS.txt` (unversioned names on purpose, so `releases/latest/download/<name>` links in the README keep working).
 - Docs: `README.md` (users + build/dev guide), `PLAN.md` (design, phases, status table, risks; keep it updated when the design changes).
 
 ## Status (2026-11-15)
@@ -17,7 +17,7 @@ Everything below is verified by the user on real hardware (Android 15 HONOR phon
 - Windows XP/Vista/7: the exe imports `api-ms-win-crt-*` (UCRT; this MinGW is UCRT-based), so it runs on Win 10/11 (verified), or 7/8.1 + KB2999226 (untested); XP/Vista are NOT supported. PLAN.md's original "legacy = XP/7" idea needs an msvcrt-based MinGW build, not done. Check with `objdump -p helper/build/cablemouse-legacy.exe | grep DLL`.
 - On-screen keyboard lacks Insert/PgUp/PgDn/Home/End (they exist in the protocol).
 - Camera idea (phone as a webcam for OBS) was investigated and **decided to be a separate app**: this HONOR's USB chooser (Transfer photos, Transfer files / Android Auto, Charge only, Reverse charge, MIDI) has no Webcam/UVC option and an app cannot add a USB gadget function without root, so a true USB camera is impossible. The feasible route is video over a cable network link (USB tethering) to an OBS Media Source. Cable Mouse stays input-only (it asks for almost no permissions).
-- Backlog: Bluetooth transport (a second `link.Transport`; the Protocol button already lists it, disabled). Next step: publish the v1.1 release only when the user asks.
+- Backlog: Bluetooth transport (a second `link.Transport`; the Protocol button already lists it, disabled). Releases are published only when the user asks; v1.1 was, with notes that include a "which mode for what" table.
 
 ## Architecture (Kotlin app; keep these boundaries)
 Dependencies point downwards; screens never reach into the activity.
