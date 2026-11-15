@@ -71,6 +71,12 @@ class MainActivity : Activity() {
     private var maxPointers = 0
     private var travel = 0f
     private var fingers = 0
+    private var lastTapUp = 0L          // eventTime of the last quick one-finger tap (0 = none)
+    private var dragging = false        // left button held by a tap-then-touch drag
+
+    private fun endDrag() {
+        if (dragging) { dragging = false; sendBytes(MouseProtocol.button(MouseProtocol.BTN_LEFT, false)) }
+    }
 
     internal fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     internal fun dpf(v: Int) = v * resources.displayMetrics.density
@@ -158,6 +164,8 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onPause() { endDrag(); super.onPause() }
+
     override fun onDestroy() {
         running = false
         if (::manager.isInitialized) runCatching { manager.unregisterDeviceCallback(midiCallback) }
@@ -243,7 +251,9 @@ class MainActivity : Activity() {
     }
 
     /**
-     * One finger: move. Tap: left click. Two fingers: vertical drag scrolls; two-finger tap: right click.
+     * One finger: move. Tap: left click. Tap, then touch again within DRAG_WINDOW_MS: the left button is held
+     * until the finger lifts (drag); a quick second tap is just a double click.
+     * Two fingers: vertical drag scrolls; two-finger tap: right click.
      * A tap is a gesture shorter than TAP_MS that never travelled more than TAP_SLOP_DP.
      * Gestures are silent: no sound or haptics on the pad.
      */
@@ -268,8 +278,14 @@ class MainActivity : Activity() {
                 MotionEvent.ACTION_DOWN -> {
                     gestureStart = e.eventTime; maxPointers = 1; travel = 0f; fingers = 1
                     lastCx = cx; lastCy = cy
+                    if (lastTapUp != 0L && e.eventTime - lastTapUp < DRAG_WINDOW_MS) {
+                        dragging = true
+                        sendBytes(MouseProtocol.button(MouseProtocol.BTN_LEFT, true))
+                    }
+                    lastTapUp = 0L
                 }
                 MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                    endDrag()
                     maxPointers = maxOf(maxPointers, e.pointerCount)
                     fingers = n
                     lastCx = cx; lastCy = cy      // re-anchor so a finger-count change doesn't jump
@@ -290,10 +306,18 @@ class MainActivity : Activity() {
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    val wasDragging = dragging
+                    endDrag()
                     val quick = e.eventTime - gestureStart < TAP_MS
-                    if (quick && travel <= dp(TAP_SLOP_DP))
-                        click(if (maxPointers >= 2) MouseProtocol.BTN_RIGHT else MouseProtocol.BTN_LEFT)
+                    if (quick && travel <= dp(TAP_SLOP_DP)) {
+                        // wasDragging: this was the second tap of a double click (press/release already sent)
+                        if (!wasDragging) {
+                            click(if (maxPointers >= 2) MouseProtocol.BTN_RIGHT else MouseProtocol.BTN_LEFT)
+                            if (maxPointers < 2) lastTapUp = e.eventTime
+                        }
+                    }
                 }
+                MotionEvent.ACTION_CANCEL -> endDrag()
             }
             true
         }
@@ -571,6 +595,7 @@ class MainActivity : Activity() {
         const val DEFAULT_SCROLL = 6f
         const val SCROLL_MAX = 20
         const val TAP_MS = 250L
+        const val DRAG_WINDOW_MS = 300L
         const val TAP_SLOP_DP = 10
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1

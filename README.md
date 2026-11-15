@@ -38,6 +38,7 @@ You need the app on the phone and the helper on the PC.
 | --- | --- |
 | Drag one finger on the pad | Move the cursor |
 | Tap the pad | Left click |
+| Tap, then touch again and drag (within 0.3 s) | Drag: hold the left button until you lift (a quick second tap is a double click) |
 | Two-finger tap | Right click |
 | Drag two fingers up/down | Scroll |
 | **Left** / **Right** buttons | Mouse buttons (hold to drag; use a second finger on the pad to move) |
@@ -70,7 +71,7 @@ The helper reconnects by itself after an unplug/replug. If the cursor feels too 
 - **macOS:** not implemented yet (a stub exists).
 - **Single-file universal helper (`cablemouse.com`, Cosmopolitan APE):** planned in [`PLAN.md`](PLAN.md), not built yet.
 - **Unsigned helper:** SmartScreen and some antivirus/EDR products flag unsigned programs that inject input. The source is small (`helper/`) and the build is reproducible, so you can build it yourself and compare checksums.
-- Not implemented: tap-and-hold drag, keyboard input, gyro air-mouse.
+- Not implemented: keyboard input, gyro air-mouse.
 
 ## Development
 

@@ -11,7 +11,8 @@ Not verified / not built:
 - Helper delivery over MTP *to a PC* (file transfer is blocked on the user's work PC, who uses the GitHub release instead).
 - Linux helper (X11/XTest, written, never run on hardware), macOS helper (stub only), universal `cablemouse.com` Cosmopolitan APE (never built; `make ape` is a TODO).
 - Windows XP/Vista: the exe links the UCRT (this MinGW is UCRT-based), so it needs Win 10/11 (or 7/8.1 + KB2999226).
-- Backlog ideas: tap-and-hold drag (explained to the user, they will come back to it), keyboard/text mode, gyro air-mouse, absolute positioning, tappable GitHub link in the setup guide, optional CI workflow, Phase 0 step 4 (500 msg/s stream test) was never formally reported.
+- Tap-then-touch drag (tap, touch again within 300 ms, hold the left button until lift) done and verified 2026-11-15.
+- Backlog ideas: keyboard/text mode, gyro air-mouse, absolute positioning, tappable GitHub link in the setup guide, optional CI workflow, Phase 0 step 4 (500 msg/s stream test) was never formally reported.
 
 ## Layout
 - `app/` — Android app (Kotlin, plain Views built in code, **no Compose**, minSdk 23, targetSdk 35, package `com.cablemouse`)
