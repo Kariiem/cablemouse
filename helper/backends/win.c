@@ -13,6 +13,7 @@
 #include <string.h>
 #include "../backend.h"
 #include "../common/protocol.h"
+#include "../common/status.h"
 
 #ifndef MOUSEEVENTF_ABSOLUTE
 #define MOUSEEVENTF_ABSOLUTE 0x8000
@@ -55,17 +56,10 @@ static void CALLBACK midi_cb(HMIDIIN h, UINT msg, DWORD_PTR inst, DWORD_PTR p1, 
     }
 }
 
-static char last_msg[256];
-static void note(const char *fmt, const char *a, unsigned b) {
-    char m[256];
-    snprintf(m, sizeof m, fmt, a, b);
-    if (strcmp(m, last_msg)) { printf("%s\n", m); fflush(stdout); strcpy(last_msg, m); }
-}
-
 int backend_open(const char *hint) {
     if (!inited) { InitializeCriticalSection(&lock); evt = CreateEvent(NULL, FALSE, FALSE, NULL); inited = 1; }
     UINT n = midiInGetNumDevs(), pick = (UINT)-1;
-    if (n == 0) { note("No MIDI input devices found. Is the phone in MIDI mode?%s%u", "", 0); return -1; }
+    if (n == 0) { cm_status("No MIDI input devices found. Is the phone in MIDI mode?"); return -1; }
     /* Prefer: user-given substring, then "Android", then the only device if there is exactly one. */
     const char *wants[2] = { hint, "Android" };
     MIDIINCAPSA caps;
@@ -83,7 +77,7 @@ int backend_open(const char *hint) {
                 strncat(list, caps.szPname, sizeof list - strlen(list) - 1);
                 strncat(list, "] ", sizeof list - strlen(list) - 1);
             }
-        note("MIDI inputs found: %s- none matched. Run: cablemouse-legacy.exe \"<part of name>\"%u", list, 0);
+        cm_status("MIDI inputs found: %s- none matched. Run: cablemouse-legacy.exe \"<part of name>\"", list);
         return -1;
     }
     midiInGetDevCapsA(pick, &caps, sizeof caps);
@@ -91,11 +85,12 @@ int backend_open(const char *hint) {
     MMRESULT r = midiInOpen(&hin, pick, (DWORD_PTR)midi_cb, 0, CALLBACK_FUNCTION);
     if (r != MMSYSERR_NOERROR) {
         hin = NULL;
-        note("midiInOpen failed (code %u%s). 4 = device busy: close other MIDI programs (monitors, DAWs).", "", (unsigned)r);
+        cm_status("midiInOpen failed (code %u). 4 = device busy: close other MIDI programs (monitors, DAWs).", (unsigned)r);
         return -1;
     }
     snprintf(opened_name, sizeof opened_name, "%s", caps.szPname);
     midiInStart(hin);
+    cm_status_reset();
     return 0;
 }
 
