@@ -12,7 +12,7 @@ Everything below is verified by the user on real hardware (Android 15 HONOR phon
 - Not verified / not built:
   - Helper delivery over MTP *to a PC* (file transfer is blocked on the user's work PC, who uses the GitHub release instead).
   - Linux helper (X11/XTest, written incl. typing and absolute, never run on hardware), macOS helper (stub only), universal `cablemouse.com` Cosmopolitan APE (never built; `make ape` is a TODO).
-  - `.github/workflows/ci.yml` (tests + helper builds + debug APK) had never run on GitHub before the first push of this session.
+  - `.github/workflows/ci.yml` (tests + helper builds + debug APK) passes on GitHub (first run 2026-11-15, ~2 min). Its actions are on Node 20 and `setup-java@v4` is flagged deprecated; bump to v5 when convenient.
   - The big refactor of 2026-11-15 (below) was smoke-tested on the phone by automation (all modes enter/exit, Back, settings, setup guide, sensors) but not on the PC; the user was asked to re-verify on hardware before the release is published.
 - Windows XP/Vista/7: the exe imports `api-ms-win-crt-*` (UCRT; this MinGW is UCRT-based), so it runs on Win 10/11 (verified), or 7/8.1 + KB2999226 (untested); XP/Vista are NOT supported. PLAN.md's original "legacy = XP/7" idea needs an msvcrt-based MinGW build, not done. Check with `objdump -p helper/build/cablemouse-legacy.exe | grep DLL`.
 - On-screen keyboard lacks Insert/PgUp/PgDn/Home/End (they exist in the protocol).

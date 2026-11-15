@@ -183,7 +183,7 @@ This runs the helper tests and Kotlin unit tests, builds the helper and the sign
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and pull request: the C tests, the Linux and Windows (MinGW) helper builds, the Kotlin unit tests and a debug APK (uploaded as an artifact). It signs and publishes nothing; releases stay manual. It has not run on GitHub yet.
+`.github/workflows/ci.yml` runs on every push and pull request: the C tests, the Linux and Windows (MinGW) helper builds, the Kotlin unit tests and a debug APK (uploaded as an artifact). It signs and publishes nothing; releases stay manual. It passes on GitHub (first run 2026-11-15, about 2 minutes).
 
 ### Tests
 
