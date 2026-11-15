@@ -30,7 +30,7 @@ Legend: **verified** = confirmed by the user on real hardware (Android 15 phone,
 | 4. Helper delivery over MTP | **built** | Exporter + setup guide; the file appears in the phone's `Download/CableMouse`. Copy to a PC over MTP not verified (blocked on the user's work PC; they use the GitHub release). Only the Windows exe is bundled. |
 | 5. PC helper | Windows **verified**; Linux **built**; macOS/APE **todo** | Windows back end hardened for unplug/replug. Linux X11 back end untested. macOS is a stub; the Cosmopolitan APE (`cablemouse.com`) and its spike (step 18) were not started. |
 | 6. Robustness | mostly **verified** | App auto-reconnects on device add/remove; heartbeat every 500 ms; helper releases buttons after 2 s without heartbeat; version mismatch warning exists. |
-| 7. Extras | keyboard **verified** (Windows); rest **todo** | **Type** pill (system keyboard, forwarded as Unicode/special keys, hardware-keyboard shortcuts) and **Keys** (full-screen QWERTY, physical keys + held modifiers, forced landscape, key repeat) verified on Windows by the user. Settings: Caps as Ctrl, sticky modifiers (both default off). Linux typing is built but untested; macOS none. **todo:** gyro air-mouse, absolute positioning, Insert/PgUp/PgDn keys on the on-screen keyboard. |
+| 7. Extras | keyboard and gyro **verified** (Windows); rest **todo** | Header buttons **Mode** (Mouse default / Mouse + typing / Keyboard / Gyro) and **Protocol** (Wired now; Bluetooth listed, disabled). *Mouse + typing* (system keyboard forwarded as Unicode/special keys, hardware-keyboard shortcuts) and *Keyboard* (full-screen QWERTY, physical keys + held modifiers, forced landscape, key repeat) verified on Windows by the user. Settings: Caps as Ctrl, sticky modifiers (both default off); every on/off mode option is also a toggle button under its mode in the Mode picker (session only; Settings hold the defaults). *Gyro*: round centre button, hold-to-aim setting (default on), speed slider; uses the gyroscope + gravity sensors (`proto/GyroMath.kt`, unit tested), no protocol change; verified by the user. Linux typing is built but untested; macOS none. **todo:** Bluetooth transport, absolute positioning, Insert/PgUp/PgDn keys on the on-screen keyboard. |
 | Release | **done** | Public repo https://github.com/Kariiem/cablemouse, MIT, release `v1.0` with signed APK, Windows exe and checksums. |
 
 ## Architecture
@@ -115,7 +115,7 @@ One C codebase builds two outputs:
 
 ### Phase 7 (optional extras)
 26. Keyboard/text mode, with keys sent as note numbers or SysEx and injected through SendInput, CGEvent or XTest.
-27. Gyroscope "air mouse" mode.
+27. Gyroscope "air mouse" mode (done: `GyroScreen.kt`, `GyroMath.kt`).
 28. Absolute positioning mode (phone screen maps to PC screen).
 
 ## Critical files

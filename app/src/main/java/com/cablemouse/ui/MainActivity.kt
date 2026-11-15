@@ -56,10 +56,15 @@ class MainActivity : Activity(), KeySink {
     private lateinit var keyRow: View
     private lateinit var mainScreen: View
     private lateinit var keys: KeysScreen
+    private lateinit var gyro: GyroScreen
+    private var gyroHold = true
+    private var gyroPer10Deg = GYRO_DEFAULT
     private var capsAsCtrl = false
     private var stickyMods = false
-    private lateinit var keyboardPill: TextView
+    private lateinit var picker: Picker
     private var keyboardOn = false
+    private var mode = MODE_MOUSE
+    private var transport = TRANSPORT_WIRED
     private var imeWasVisible = false
     private val ui = Handler(Looper.getMainLooper())
 
@@ -128,6 +133,8 @@ class MainActivity : Activity(), KeySink {
         vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
         capsAsCtrl = p.getBoolean("capsCtrl", false)
         stickyMods = p.getBoolean("stickyMods", false)
+        gyroHold = p.getBoolean("gyroHold", true)
+        gyroPer10Deg = p.getFloat("gyroPer10Deg", GYRO_DEFAULT)
         themeMode = p.getInt("theme", THEME_SYSTEM)
 
         val dark = when (themeMode) {
@@ -141,9 +148,14 @@ class MainActivity : Activity(), KeySink {
         val root = FrameLayout(this).apply { setBackgroundColor(pal.bg) }
         mainScreen = buildMain()
         root.addView(mainScreen, FrameLayout.LayoutParams(-1, -1))
-        keys = KeysScreen(this, { sendBytes(it) }, { showKeys(false) })
+        keys = KeysScreen(this, { sendBytes(it) }, { setMode(MODE_MOUSE) })
         keys.view.setPadding(dp(10), dp(8), dp(10), dp(8))
         root.addView(keys.view, FrameLayout.LayoutParams(-1, -1))
+        gyro = GyroScreen(this, { sendBytes(it) }, { clickFeedback(it) }, { dx, dy -> scheduler.addMove(dx, dy) }, { setMode(MODE_MOUSE) })
+        gyro.view.setPadding(dp(14), dp(10), dp(14), dp(14))
+        root.addView(gyro.view, FrameLayout.LayoutParams(-1, -1))
+        picker = Picker(this)
+        root.addView(picker.view, FrameLayout.LayoutParams(-1, -1))
         keyCapture = KeyCaptureView(this, this) { capsAsCtrl }
         root.addView(keyCapture, FrameLayout.LayoutParams(dp(1), dp(1)))
         settings = buildSettings().apply {
@@ -164,7 +176,7 @@ class MainActivity : Activity(), KeySink {
                 )
                 v.setPadding(i.left, i.top, i.right, i.bottom)
                 val imeVisible = insets.isVisible(WindowInsets.Type.ime())
-                if (imeWasVisible && !imeVisible && keyboardOn) setKeyboard(false)   // user dismissed it (back gesture)
+                if (imeWasVisible && !imeVisible && mode == MODE_MOUSE_TYPING) setMode(MODE_MOUSE)   // user dismissed it (back gesture)
                 imeWasVisible = imeVisible
             } else {
                 @Suppress("DEPRECATION")
@@ -186,7 +198,11 @@ class MainActivity : Activity(), KeySink {
         exportHelpers(force = false)
     }
 
-    override fun onResume() { super.onResume(); if (::settings.isInitialized && port == null) refresh(autoOpen = true) }
+    override fun onResume() {
+        super.onResume()
+        if (::settings.isInitialized && port == null) refresh(autoOpen = true)
+        if (::gyro.isInitialized && gyro.view.visibility == View.VISIBLE) gyro.start()
+    }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -197,13 +213,19 @@ class MainActivity : Activity(), KeySink {
     override fun onBackPressed() {
         when {
             ::onboarding.isInitialized && onboarding.visibility == View.VISIBLE -> onboarding.visibility = View.GONE
-            ::keys.isInitialized && keys.view.visibility == View.VISIBLE && !settingsOpen() -> showKeys(false)
+            ::picker.isInitialized && picker.isShown -> picker.hide()
+            mode != MODE_MOUSE && !settingsOpen() -> setMode(MODE_MOUSE)
             ::settings.isInitialized && settings.visibility == View.VISIBLE -> showSettings(false)
             else -> super.onBackPressed()
         }
     }
 
-    override fun onPause() { endDrag(); if (::keys.isInitialized) keys.releaseAll(); super.onPause() }
+    override fun onPause() {
+        endDrag()
+        if (::keys.isInitialized) keys.releaseAll()
+        if (::gyro.isInitialized) gyro.stop()
+        super.onPause()
+    }
 
     override fun onDestroy() {
         running = false
@@ -236,7 +258,7 @@ class MainActivity : Activity(), KeySink {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(10), dp(18), dp(10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             background = pal.pressable(pal.card, pal.pressed, dpf(24), pal.stroke, 1)
             isClickable = true
             isSoundEffectsEnabled = false
@@ -244,23 +266,11 @@ class MainActivity : Activity(), KeySink {
         }
         headerDot = View(this).apply { background = pal.oval(pal.off) }
         header.addView(headerDot, LinearLayout.LayoutParams(dp(9), dp(9)).apply { rightMargin = dp(10) })
-        header.addView(label("Cable Mouse", 16f, pal.text, bold = true))
-        keyboardPill = TextView(this).apply {
+        header.addView(label("Cable Mouse", 15f, pal.text, bold = true).apply { maxLines = 1 })
+        fun headerPill(t: String, onClick: () -> Unit) = TextView(this).apply {
+            text = t
             gravity = Gravity.CENTER
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            isClickable = true
-            isSoundEffectsEnabled = false
-            setOnClickListener { setKeyboard(!keyboardOn) }
-        }
-        updateKeyboardPill()
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        top.addView(header)
-        top.addView(keyboardPill, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
-        top.addView(TextView(this).apply {
-            text = "Keys"
-            gravity = Gravity.CENTER
+            maxLines = 1
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(pal.text)
@@ -268,8 +278,12 @@ class MainActivity : Activity(), KeySink {
             background = pal.pressable(pal.card, pal.pressed, dpf(24), pal.stroke, 1)
             isClickable = true
             isSoundEffectsEnabled = false
-            setOnClickListener { showKeys(true) }
-        }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+            setOnClickListener { onClick() }
+        }
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        top.addView(header)
+        top.addView(headerPill("Mode") { showModePicker() }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
+        top.addView(headerPill("Protocol") { showProtocolPicker() }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
         main.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
 
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -307,7 +321,7 @@ class MainActivity : Activity(), KeySink {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun mouseButton(text: String, btn: Int) = TextView(this).apply {
+    internal fun mouseButton(text: String, btn: Int) = TextView(this).apply {
         this.text = text
         gravity = Gravity.CENTER
         textSize = 17f
@@ -334,21 +348,63 @@ class MainActivity : Activity(), KeySink {
 
     // ---------- keyboard ----------
 
-    private fun updateKeyboardPill() {
-        keyboardPill.text = if (keyboardOn) "Type: on" else "Type"
-        keyboardPill.setTextColor(if (keyboardOn) pal.onAccent else pal.text)
-        keyboardPill.background =
-            if (keyboardOn) pal.rounded(pal.accent, dpf(24)) else pal.pressable(pal.card, pal.pressed, dpf(24), pal.stroke, 1)
-    }
-
     private fun setKeyboard(on: Boolean) {
         keyboardOn = on
         keyRow.visibility = if (on) View.VISIBLE else View.GONE
-        updateKeyboardPill()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         if (on) keyCapture.post { keyCapture.requestFocus(); imm.showSoftInput(keyCapture, 0) }
         else imm.hideSoftInputFromWindow(keyCapture.windowToken, 0)
     }
+
+    // ---------- modes and protocol ----------
+
+    /** Switches between the four modes; Mouse is the default and the way back from every other mode. */
+    private fun setMode(m: Int) {
+        if (m == mode) return
+        when (mode) {
+            MODE_MOUSE_TYPING -> setKeyboard(false)
+            MODE_KEYBOARD -> showKeys(false)
+            MODE_GYRO -> showGyro(false)
+        }
+        mode = m
+        when (m) {
+            MODE_MOUSE_TYPING -> setKeyboard(true)
+            MODE_KEYBOARD -> showKeys(true)
+            MODE_GYRO -> showGyro(true)
+        }
+    }
+
+    private fun showModePicker() = picker.show(
+        "Mode",
+        listOf(
+            Picker.Item("Mouse", "Touchpad with Left / Right buttons", options = listOf(
+                option("Invert scroll", { invertScroll }) { invertScroll = it })),
+            Picker.Item("Mouse + typing", "Touchpad plus the phone's own keyboard", options = listOf(capsOption())),
+            Picker.Item("Keyboard", "Full-screen PC keyboard (landscape)", options = listOf(capsOption(),
+                option("Sticky modifiers", { stickyMods }) { stickyMods = it })),
+            Picker.Item("Gyro", "Move the cursor by turning the phone", options = listOf(
+                option("Hold to aim", { gyroHold }) { gyroHold = it })),
+        ),
+        mode,
+    ) { setMode(it) }
+
+    /**
+     * A toggle button for the Mode picker. It flips the live value for this session only; the switches in Settings
+     * hold the defaults that are loaded at start-up.
+     */
+    private fun option(label: String, get: () -> Boolean, set: (Boolean) -> Unit) =
+        Picker.Option(label, get) { set(!get()) }
+
+    private fun capsOption() = option("Caps = Ctrl", { capsAsCtrl }) { capsAsCtrl = it }
+
+    private fun showProtocolPicker() = picker.show(
+        "Protocol",
+        listOf(
+            Picker.Item("Wired", "USB cable, MIDI (what you use now)"),
+            Picker.Item("Bluetooth", "Coming later: the same modes without a cable", enabled = false),
+        ),
+        transport,
+    ) { transport = it }
 
     /** Keyboard mode: a full-screen PC keyboard. Landscape is forced while it is open so all keys fit. */
     private fun showKeys(show: Boolean) {
@@ -364,6 +420,21 @@ class MainActivity : Activity(), KeySink {
         mainScreen.visibility = if (show) View.GONE else View.VISIBLE
     }
 
+    /** Gyro mode: the cursor follows the phone's rotation (see [GyroScreen]). The screen stays on while it is open. */
+    private fun showGyro(show: Boolean) {
+        if (show) {
+            if (keyboardOn) setKeyboard(false)
+            gyro.rebuild(gyroHold, gyroPer10Deg)
+            gyro.start()
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            gyro.stop()
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        gyro.view.visibility = if (show) View.VISIBLE else View.GONE
+        mainScreen.visibility = if (show) View.GONE else View.VISIBLE
+    }
+
     override fun onCombo(mods: Int, hid: Int) =
         sendBytes(MouseProtocol.mods(mods) + MouseProtocol.keyHid(hid) + MouseProtocol.mods(0))
 
@@ -371,7 +442,7 @@ class MainActivity : Activity(), KeySink {
     override fun onKey(key: Int) = sendBytes(MouseProtocol.key(key))
 
     /** Left/Right button feedback: nothing, the synthesised click, or a short vibration (a stronger one on press). */
-    private fun clickFeedback(down: Boolean) {
+    internal fun clickFeedback(down: Boolean) {
         when (clickFeedback) {
             FEEDBACK_AUDIBLE -> if (down) sound.playDown() else sound.playUp()
             FEEDBACK_VIBRATE -> vibrator?.takeIf { it.hasVibrator() }?.let { v ->
@@ -535,6 +606,7 @@ class MainActivity : Activity(), KeySink {
         })
         top.addView(label("Settings", 22f, pal.text, bold = true))
         col.addView(top)
+        add(label("The switches here are the start-up defaults. The Mode button can flip them for the current session.", 13f, pal.muted))
 
         add(card("Connection") {
             statusText = label("Not connected", 15f, pal.text)
@@ -586,8 +658,20 @@ class MainActivity : Activity(), KeySink {
             addView(group)
         })
 
+        add(card("Gyro mode") {
+            addView(toggle("Hold the center button to aim (off: the cursor always follows the phone and the button clicks)", gyroHold) {
+                gyroHold = it; prefs().edit().putBoolean("gyroHold", it).apply()
+            })
+            val gs = label("", 14f, pal.muted).apply { setPadding(0, dp(12), 0, 0) }
+            fun showGs() { gs.text = "Gyro speed: ${gyroPer10Deg.toInt()} px per 10° of rotation" }
+            showGs()
+            addView(gs)
+            addView(slider(GYRO_MIN, GYRO_MAX, gyroPer10Deg, { gyroPer10Deg = it.toFloat(); showGs() },
+                { prefs().edit().putFloat("gyroPer10Deg", it.toFloat()).apply() }))
+        })
+
         add(card("Keyboard") {
-            addView(toggle("Caps Lock acts as Ctrl (keyboard mode, and a hardware keyboard in Type mode)", capsAsCtrl) {
+            addView(toggle("Caps Lock acts as Ctrl (keyboard mode, and a hardware keyboard in typing mode)", capsAsCtrl) {
                 capsAsCtrl = it; prefs().edit().putBoolean("capsCtrl", it).apply()
             })
             addView(toggle("Sticky modifiers: tap Shift / Ctrl / Alt / Win to keep it on for the next key (keyboard mode)", stickyMods) {
@@ -772,6 +856,15 @@ class MainActivity : Activity(), KeySink {
         const val SENS_MAX = 2500
         const val DEFAULT_SCROLL = 6f
         const val SCROLL_MAX = 20
+        const val MODE_MOUSE = 0
+        const val MODE_MOUSE_TYPING = 1
+        const val MODE_KEYBOARD = 2
+        const val MODE_GYRO = 3
+        const val TRANSPORT_WIRED = 0
+        const val TRANSPORT_BLUETOOTH = 1
+        const val GYRO_DEFAULT = 260f      // cursor px per 10 degrees of rotation
+        const val GYRO_MIN = 60
+        const val GYRO_MAX = 800
         const val FEEDBACK_SILENT = 0
         const val FEEDBACK_AUDIBLE = 1
         const val FEEDBACK_VIBRATE = 2

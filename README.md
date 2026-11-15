@@ -32,6 +32,18 @@ You need the app on the phone and the helper on the PC.
 4. **Run the helper.** Double-click `cablemouse-legacy.exe`. Windows SmartScreen may warn because the file is unsigned: choose **More info → Run anyway**. The console prints `connected` once the app is open on the phone.
 5. **Open Cable Mouse on the phone** and use the touchpad. The dot in the title pill turns green when the USB MIDI port is open.
 
+### Modes and protocol
+
+The header has three buttons: **Cable Mouse** (settings), **Mode** and **Protocol**.
+
+- **Mode** picks what the phone acts as. **Mouse** is the default and the way back from the others (also the Back gesture, or the **Mouse** button on the full-screen modes).
+  - **Mouse**: touchpad with Left/Right buttons (below).
+  - **Mouse + typing**: the touchpad plus the phone's own keyboard (see Typing).
+  - **Keyboard**: a full-screen PC keyboard (see Typing).
+  - **Gyro**: the cursor follows the phone's rotation (see Gyro mode).
+- Under each mode the picker shows that mode's on/off options as toggle buttons (filled = on): *Invert scroll* (Mouse), *Caps = Ctrl* (Mouse + typing, Keyboard), *Sticky modifiers* (Keyboard), *Hold to aim* (Gyro). Tapping one changes it **for the current session only**. The same switches in Settings are the **defaults** loaded at every start.
+- **Protocol** picks how the phone talks to the PC: **Wired** (USB cable, MIDI) today; **Bluetooth** is listed but disabled until it is built.
+
 ### Gestures and buttons
 
 | Action | Result |
@@ -49,12 +61,19 @@ Taps and gestures on the pad are silent. The Left/Right buttons give feedback yo
 
 Two ways to type on the PC. Both need a helper from this version or newer (older helpers silently ignore keys).
 
-- **Type** (pill next to the title): opens the phone's own keyboard. Letters, any Unicode character (é, €, emoji), Backspace and Enter are typed on the PC, and a row of Esc / Tab / Del / Home / End / arrow keys appears above the pad. A hardware keyboard plugged into the phone also works, including Ctrl/Alt/Win shortcuts.
-- **Keys** (keyboard mode): the whole screen becomes a PC QWERTY keyboard (Esc, F1-F12, number row, Tab, Caps, Shift, Ctrl, Win, Alt, Space, arrows). It switches the phone to landscape while open; **Mouse** or Back returns. Keys are sent as physical keys, so shortcuts work: hold Ctrl with one finger and tap C with another. Modifiers behave like on a real keyboard (down while touched), so a lone tap on Win opens the Start menu and a lone tap on Alt focuses the menu bar. Held keys repeat. Keys are physical positions, so on a non-US PC layout the symbol keys type what that layout puts there, not the label.
+- **Mouse + typing** mode: opens the phone's own keyboard. Letters, any Unicode character (é, €, emoji), Backspace and Enter are typed on the PC, and a row of Esc / Tab / Del / Home / End / arrow keys appears above the pad. A hardware keyboard plugged into the phone also works, including Ctrl/Alt/Win shortcuts.
+- **Keyboard** mode: the whole screen becomes a PC QWERTY keyboard (Esc, F1-F12, number row, Tab, Caps, Shift, Ctrl, Win, Alt, Space, arrows). It switches the phone to landscape while open; **Mouse** or Back returns. Keys are sent as physical keys, so shortcuts work: hold Ctrl with one finger and tap C with another. Modifiers behave like on a real keyboard (down while touched), so a lone tap on Win opens the Start menu and a lone tap on Alt focuses the menu bar. Held keys repeat. Keys are physical positions, so on a non-US PC layout the symbol keys type what that layout puts there, not the label.
 
 Settings → **Keyboard**:
-- *Caps Lock acts as Ctrl*: the Caps key in keyboard mode becomes Ctrl, and Caps on a hardware keyboard acts as Ctrl in Type mode.
+- *Caps Lock acts as Ctrl*: the Caps key in keyboard mode becomes Ctrl, and Caps on a hardware keyboard acts as Ctrl in Mouse + typing mode.
 - *Sticky modifiers*: a short tap on Shift / Ctrl / Alt / Win keeps it on for the next key; tap it again to cancel. Off by default.
+
+### Gyro mode
+
+Pick **Gyro** in Mode. A large circle sits in the middle, with Left/Right buttons above it. Turn the phone left/right and tilt it up/down to move the cursor (it works with the phone lying flat like a remote or held upright). The screen stays on while this mode is open.
+
+- *Hold to aim* (default on; Mode picker button or Settings → **Gyro mode**): the cursor follows the phone only while you hold the circle; use Left/Right to click. With it off, the cursor always follows the phone and the circle becomes a left-click button (hold it while turning to drag).
+- *Gyro speed* sets how many pixels the cursor moves per 10° of rotation.
 
 ### Settings
 
@@ -82,8 +101,8 @@ The helper reconnects by itself after an unplug/replug. If the cursor feels too 
 - **macOS:** not implemented yet (a stub exists).
 - **Single-file universal helper (`cablemouse.com`, Cosmopolitan APE):** planned in [`PLAN.md`](PLAN.md), not built yet.
 - **Unsigned helper:** SmartScreen and some antivirus/EDR products flag unsigned programs that inject input. The source is small (`helper/`) and the build is reproducible, so you can build it yourself and compare checksums.
-- Not implemented: gyro air-mouse, absolute positioning. Keyboard input exists but is only verified on the Windows helper; the Linux helper's typing is untested and macOS has none.
-- Keyboard mode has no Insert/PageUp/PageDown/Home/End keys (they exist in the protocol; Type mode's key row has Home and End).
+- Not implemented: absolute positioning, Bluetooth. Gyro mode is verified on hardware. Keyboard input exists but is only verified on the Windows helper; the Linux helper's typing is untested and macOS has none.
+- Keyboard mode has no Insert/PageUp/PageDown/Home/End keys (they exist in the protocol; Mouse + typing mode's key row has Home and End).
 
 ## Development
 
