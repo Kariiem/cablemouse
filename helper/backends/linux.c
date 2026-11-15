@@ -1,7 +1,7 @@
 /* Linux back end: raw MIDI from /dev/snd/midiC*D0 (no libasound), input via XTest (dlopen). */
 #define _GNU_SOURCE
 #include <dlfcn.h>
-#include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include "../backend.h"
 #include "../common/protocol.h"
+#include "../common/status.h"
 
 static int fd = -1;
 static void *dpy;
@@ -50,7 +51,7 @@ static int find_device(const char *hint, char *out, size_t n) {
 static int init_x(void) {
     if (dpy) return 0;
     void *x11 = dlopen("libX11.so.6", RTLD_NOW), *xt = dlopen("libXtst.so.6", RTLD_NOW);
-    if (!x11 || !xt) { fprintf(stderr, "libX11/libXtst not found; X11 session required (Wayland unsupported).\n"); return -1; }
+    if (!x11 || !xt) { cm_status("libX11/libXtst not found; X11 session required (Wayland unsupported)."); return -1; }
     XOpenDisplay_ = dlsym(x11, "XOpenDisplay"); XFlush_ = dlsym(x11, "XFlush");
     XTestFakeRelativeMotionEvent_ = dlsym(xt, "XTestFakeRelativeMotionEvent");
     XTestFakeButtonEvent_ = dlsym(xt, "XTestFakeButtonEvent");
@@ -61,25 +62,33 @@ static int init_x(void) {
     XTestFakeMotionEvent_ = dlsym(xt, "XTestFakeMotionEvent"); XDefaultScreen_ = dlsym(x11, "XDefaultScreen");
     XDisplayWidth_ = dlsym(x11, "XDisplayWidth"); XDisplayHeight_ = dlsym(x11, "XDisplayHeight");
     dpy = XOpenDisplay_ ? XOpenDisplay_(NULL) : NULL;
-    if (!dpy) { fprintf(stderr, "Cannot open X display (Wayland sessions need uinput; not supported yet).\n"); return -1; }
+    if (!dpy) { cm_status("Cannot open X display (Wayland sessions need uinput; not supported yet)."); return -1; }
     return 0;
 }
 
 int backend_open(const char *hint) {
     char path[128];
     if (init_x() != 0) return -1;
-    if (find_device(hint, path, sizeof path) != 0) return -1;
+    if (find_device(hint, path, sizeof path) != 0) {
+        cm_status("No sound card named \"%s\" found. Is the phone in MIDI mode? (Or run: cablemouse-linux /dev/snd/midiC<n>D0)",
+                  hint ? hint : "Android");
+        return -1;
+    }
     fd = open(path, O_RDONLY | O_NONBLOCK);
-    return fd < 0 ? -1 : 0;
+    if (fd < 0) { cm_status("Cannot open %s: %s", path, strerror(errno)); return -1; }
+    cm_status_reset();
+    return 0;
 }
 
 int backend_read_midi(uint8_t *buf, int len, int timeout_ms) {
     struct pollfd p = {fd, POLLIN, 0};
     int r = poll(&p, 1, timeout_ms);
-    if (r == 0) return 0;
-    if (r < 0 || (p.revents & (POLLERR | POLLHUP | POLLNVAL))) return -1;
-    int n = read(fd, buf, len);
-    return n < 0 ? -1 : n;
+    if (r == 0 || (r < 0 && errno == EINTR)) return 0;
+    if (r < 0 || (p.revents & (POLLERR | POLLNVAL))) return -1;
+    int n = read(fd, buf, len);                 /* POLLHUP alone still drains what the device sent last */
+    if (n > 0) return n;
+    if (n < 0 && (errno == EAGAIN || errno == EINTR)) return 0;
+    return -1;                                  /* error or end of file: the device is gone */
 }
 
 void backend_move(int dx, int dy) { XTestFakeRelativeMotionEvent_(dpy, dx, dy, 0); XFlush_(dpy); }
