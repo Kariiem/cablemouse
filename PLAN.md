@@ -23,7 +23,7 @@ Legend: **verified** = confirmed by the user on real hardware (Android 15 phone,
 
 | Phase | State | Notes |
 | --- | --- | --- |
-| 0. Transport spike (steps 1-3) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test): the app's Diagnostics has the test and the helper now has `--stream-check`, which verifies the sequence and prints PASS/FAIL; the result is still to be reported by the user. |
+| 0. Transport spike (steps 1-4) | **verified** | Phone exposes `Android USB Peripheral Port` (TYPE_USB, 1 input port); notes and mouse messages reach the Windows helper. Step 4 (500 msg/s stream test) **passed** on the user's Windows 10/11 PC (2026-11-15): 5000 messages in 10.00 s (500/s), none missing or repeated, longest gap 7.5 ms, no gap over 20 ms, measured by `cablemouse-legacy.exe --stream-check` (the gap includes Windows scheduling on the PC side). The app aborts a stream if its MIDI port closes, so two shorter runs before it ended early (they also lost nothing). |
 | 1. App skeleton | **verified** | Plain Views, no Compose. MIDI link lives in `ui/MainActivity.kt` (a separate `MidiLink.kt` was written first and later deleted as dead code). |
 | 2. Protocol + scheduler | **verified** | `MouseProtocol.kt`, `FrameScheduler.kt`, JVM tests; shared vectors with the C decoder. |
 | 3. Touchpad UI | **verified**, partly | Move, tap = left click, two-finger tap = right click, two-finger scroll, tap-then-touch drag (verified by the user), Left/Right buttons with selectable feedback (silent / audible click / vibration), pointer/scroll speed, invert scroll, dark/light/system theme. **todo:** keep-screen-on. |
