@@ -1,6 +1,8 @@
 package com.cablemouse.ui
 
+import android.content.Context
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -32,12 +34,13 @@ class MouseScreen(
     }
 
     private val touchpad = Touchpad(ui, transport, settings)
+    private val buttons = MouseButtons(ui, transport, feedback, 68)
     private val statusDot = View(ui.context).apply { background = ui.pal.oval(ui.pal.off) }
     private val keyRow: View = buildKeyRow()
     private val keyCapture = KeyCaptureView(ui.context, this) { settings.capsAsCtrl.value }
 
     override val view: View = FrameLayout(ui.context).apply {
-        addView(buildMain(feedback), FrameLayout.LayoutParams(-1, -1))
+        addView(buildMain(), FrameLayout.LayoutParams(-1, -1))
         addView(keyCapture, FrameLayout.LayoutParams(ui.dp(1), ui.dp(1)))
     }
 
@@ -46,16 +49,18 @@ class MouseScreen(
     override fun enter(mode: Mode) { if (mode == Mode.MOUSE_TYPING) setKeyboard(true) }
 
     override fun exit() {
-        touchpad.cancel()
+        releaseHeld()
         setKeyboard(false)
     }
 
-    override fun onPause() = touchpad.cancel()
+    override fun onPause() = releaseHeld()
+
+    private fun releaseHeld() { touchpad.cancel(); buttons.release() }
 
     // ---- LinkListener ----
 
     override fun onLinkState(connected: Boolean, message: String) {
-        (statusDot.background as android.graphics.drawable.GradientDrawable).setColor(if (connected) ui.pal.ok else ui.pal.off)
+        (statusDot.background as GradientDrawable).setColor(if (connected) ui.pal.ok else ui.pal.off)
     }
 
     // ---- KeySink: what the phone's keyboard produces ----
@@ -69,15 +74,15 @@ class MouseScreen(
 
     private fun setKeyboard(on: Boolean) {
         keyRow.visibility = if (on) View.VISIBLE else View.GONE
-        val imm = ui.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = ui.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         if (on) keyCapture.post { keyCapture.requestFocus(); imm.showSoftInput(keyCapture, 0) }
         else imm.hideSoftInputFromWindow(keyCapture.windowToken, 0)
     }
 
-    private fun buildMain(feedback: ButtonFeedback): View {
+    private fun buildMain(): View {
         val main = LinearLayout(ui.context).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(14)) }
         main.addView(buildHeader(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
-        main.addView(mouseButtonRow(ui, transport, feedback, 68))
+        main.addView(buttons.view)
         main.addView(keyRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
         main.addView(touchpad.view, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = ui.dp(12) })
         return main

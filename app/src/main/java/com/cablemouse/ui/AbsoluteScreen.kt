@@ -34,8 +34,10 @@ class AbsoluteScreen(
     override val needsLandscape get() = true
 
     override fun enter(mode: Mode) = rebuild(Settings.ABS_ASPECTS[settings.absAspect.value].second, settings.absTapClick.value)
-    override fun exit() {}
+    override fun exit() { buttons?.release() }
+    override fun onPause() { buttons?.release() }
 
+    private var buttons: MouseButtons? = null
     private var tapClick = true
     private var downAt = 0L
     private var startX = 0f
@@ -90,7 +92,7 @@ class AbsoluteScreen(
         }
         view.addView(area, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        view.addView(mouseButtonRow(ui, transport, feedback, 60), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
+        view.addView(MouseButtons(ui, transport, feedback, 60).also { buttons = it }.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
     }
 
     private fun place(v: View, e: MotionEvent) {

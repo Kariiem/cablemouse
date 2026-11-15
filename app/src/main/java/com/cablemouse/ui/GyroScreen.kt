@@ -3,6 +3,7 @@ package com.cablemouse.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.drawable.StateListDrawable
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -51,6 +52,7 @@ class GyroScreen(
     private var lastT = 0L
     private val up = floatArrayOf(0f, 0f, 9.81f)
     private var clicking = false
+    private var buttons: MouseButtons? = null
 
     override fun enter(mode: Mode) {
         rebuild(settings.gyroHold.value, settings.gyroSpeed.value)
@@ -74,7 +76,7 @@ class GyroScreen(
         })
         view.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
 
-        view.addView(mouseButtonRow(ui, transport, feedback, 68))
+        view.addView(MouseButtons(ui, transport, feedback, 68).also { buttons = it }.view)
 
         val area = FrameLayout(ui.context)
         if (!available) {
@@ -96,9 +98,9 @@ class GyroScreen(
         setTextColor(pal.text)
         isSoundEffectsEnabled = false
         isHapticFeedbackEnabled = false
-        background = android.graphics.drawable.StateListDrawable().apply {
+        background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), pal.oval(pal.accent))
-            addState(intArrayOf(), pal.oval(pal.card).also { (it as android.graphics.drawable.GradientDrawable).setStroke(ui.dp(2), pal.stroke) })
+            addState(intArrayOf(), pal.oval(pal.card).apply { setStroke(ui.dp(2), pal.stroke) })
         }
         setOnTouchListener { v, e ->
             when (e.actionMasked) {
@@ -129,6 +131,7 @@ class GyroScreen(
         sm.unregisterListener(this)
         aiming = false
         if (clicking) { clicking = false; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, false)) }
+        buttons?.release()
     }
 
     override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
