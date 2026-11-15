@@ -5,26 +5,38 @@ Phone + USB cable = mouse for a PC. The phone sends mouse data as USB-MIDI messa
 - Repo: https://github.com/Kariiem/cablemouse (public, MIT). Release `v1.0` holds `app-release.apk`, `cablemouse-legacy.exe`, `SHA256SUMS.txt` (unversioned names on purpose, so `releases/latest/download/<name>` links in the README keep working).
 - Docs: `README.md` (users + build/dev guide), `PLAN.md` (design, phases, status table, risks; keep it updated when the design changes).
 
-## Status (2026-11-13)
-Verified by the user on real hardware (Android 15 phone, Windows 10/11 PC): USB-MIDI transport, Windows helper (move/click/scroll, reconnect after unplug), touchpad UI and gestures, dark mode, app icon, helper copied into the phone's Download folder (visible in phone storage).
-Not verified / not built:
-- Helper delivery over MTP *to a PC* (file transfer is blocked on the user's work PC, who uses the GitHub release instead).
-- Linux helper (X11/XTest, written, never run on hardware), macOS helper (stub only), universal `cablemouse.com` Cosmopolitan APE (never built; `make ape` is a TODO).
+## Status (2026-11-15)
+Everything below is verified by the user on real hardware (Android 15 HONOR phone, Windows 10/11 PC) unless marked otherwise.
+- Done: USB-MIDI transport (500 msg/s stream test PASS via `cablemouse-legacy.exe --stream-check`: none lost, longest gap 7.5 ms), Windows helper, touchpad and gestures (incl. tap-then-touch drag), click feedback (silent / audible / vibration), keyboard input, gyro mode, absolute mode, Mode / Protocol buttons, per-mode option toggles (session) over Settings defaults, tappable GitHub link in the setup guide, helper copied into the phone's Download folder.
+- Header buttons: Cable Mouse (settings), Mode (Mouse default / Mouse + typing / Keyboard / Gyro / Absolute; the picker scrolls in landscape), Protocol (Wired; Bluetooth is a disabled placeholder).
+- Not verified / not built:
+  - Helper delivery over MTP *to a PC* (file transfer is blocked on the user's work PC, who uses the GitHub release instead).
+  - Linux helper (X11/XTest, written incl. typing and absolute, never run on hardware), macOS helper (stub only), universal `cablemouse.com` Cosmopolitan APE (never built; `make ape` is a TODO).
+  - `.github/workflows/ci.yml` (tests + helper builds + debug APK) had never run on GitHub before the first push of this session.
+  - The big refactor of 2026-11-15 (below) was smoke-tested on the phone by automation (all modes enter/exit, Back, settings, setup guide, sensors) but not on the PC; the user was asked to re-verify on hardware before the release is published.
 - Windows XP/Vista/7: the exe imports `api-ms-win-crt-*` (UCRT; this MinGW is UCRT-based), so it runs on Win 10/11 (verified), or 7/8.1 + KB2999226 (untested); XP/Vista are NOT supported. PLAN.md's original "legacy = XP/7" idea needs an msvcrt-based MinGW build, not done. Check with `objdump -p helper/build/cablemouse-legacy.exe | grep DLL`.
-- Tap-then-touch drag (tap, touch again within 300 ms, hold the left button until lift) and keyboard input (Mode "Mouse + typing" = system keyboard forwarded as Unicode/special keys; Mode "Keyboard" = full-screen QWERTY in landscape sending HID keys + held modifiers; settings: Caps as Ctrl, sticky modifiers) done and verified on Windows 2026-11-15. Header buttons: Cable Mouse (settings), Mode (Mouse default / Mouse + typing / Keyboard / Gyro), Protocol (Wired; Bluetooth disabled placeholder, to be built later with all features over it). Each mode's on/off options (Invert scroll; Caps = Ctrl; Sticky modifiers; Hold to aim) are toggle buttons under that mode in the Mode picker and change only the current session; the matching Settings switches are the persisted start-up defaults. Gyro mode (round centre button, setting `gyroHold` default on, speed slider) is done and verified by the user (2026-11-15); the maths is unit-tested. Linux typing built but untested, macOS none. On-screen keyboard lacks Insert/PgUp/PgDn.
-- Absolute mode (pad in the PC screen's shape, setting for 16:9/16:10/4:3/21:9, primary monitor only, tap-to-click option; protocol `B0 16..19`) done and verified on Windows 2026-11-15; the Mode picker scrolls for landscape.
-- Setup guide now has a tappable GitHub Releases link + Copy link (`RELEASES_URL` in `ui/Onboarding.kt`). `.github/workflows/ci.yml` exists (tests + helper builds + debug APK) but has never run on GitHub. Helper has `--stream-check` (verifies the app's Stream test, prints PASS/FAIL); the user ran it on 2026-11-15: 5000 msgs at 500/s, nothing lost, longest gap 7.5 ms (PASS). Phase 0 step 4 is closed.
-- Backlog ideas: Bluetooth transport (the only item left). Next sensible step: a new release (v1.1) of APK + exe + checksums; only when the user asks.
+- On-screen keyboard lacks Insert/PgUp/PgDn/Home/End (they exist in the protocol).
+- Camera idea (phone as a webcam for OBS) was investigated and **decided to be a separate app**: this HONOR's USB chooser (Transfer photos, Transfer files / Android Auto, Charge only, Reverse charge, MIDI) has no Webcam/UVC option and an app cannot add a USB gadget function without root, so a true USB camera is impossible. The feasible route is video over a cable network link (USB tethering) to an OBS Media Source. Cable Mouse stays input-only (it asks for almost no permissions).
+- Backlog: Bluetooth transport (a second `link.Transport`; the Protocol button already lists it, disabled). Next step: publish the v1.1 release only when the user asks.
+
+## Architecture (Kotlin app; keep these boundaries)
+Dependencies point downwards; screens never reach into the activity.
+- `proto/` pure and unit-tested: `MouseProtocol` (encoder), `FrameScheduler` (fractional-delta batching), `GyroMath`.
+- `link/` the only code that knows about USB/MIDI: `Transport` (interface the UI uses: `send`, `addMove`, `addScroll`), `LinkListener` (state/devices/log events, main thread), `MidiLink` (USB-cable implementation: device lifecycle, 125 Hz flush, heartbeat, diagnostics). A Bluetooth link would implement `Transport`.
+- `settings/` `Settings` + `Pref<T>`: every setting has a live `value` (this session) and `save()` (start-up default). Nothing else touches SharedPreferences.
+- `ui/` `Ui` (dp + widgets + `Palette`), `ButtonFeedback`/`ClickFeedback`, `Mode` enum, `ModeScreen` interface + `ModeController` + `ModeHost` (window needs: landscape, keep-screen-on), the screens (`MouseScreen` for Mouse and Mouse + typing, `KeysScreen` + `KeyLayout`, `GyroScreen`, `AbsoluteScreen`), `Touchpad` (gestures), `MouseButtons`, `KeyCapture` (phone keyboard to `KeySink`), `SettingsScreen`, `Onboarding`, `Picker` + `ModeMenu`, `Gesture` constants, `CrashReport`.
+- `MainActivity` only wires these and owns the window (insets, orientation, back, permissions) and helper delivery.
+- To add a mode: add a `Mode` value, implement `ModeScreen`, register it in `MainActivity`'s map, add its options in `ModeMenu`. To add a setting: add a `Pref` in `Settings`, a switch/slider in `SettingsScreen`.
+- Helper (C): `common/protocol.[ch]` (pure decoder), `common/stream_check.[ch]` (pure, tested), `backend.h` (platform interface) with `backends/{win,linux,mac}.c`, `main.c` (policy: reconnect, heartbeat timeout, release held input).
 
 ## Layout
-- `app/` — Android app (Kotlin, plain Views built in code, **no Compose**, minSdk 23, targetSdk 35, package `com.cablemouse`)
-  - `ui/MainActivity.kt` touchpad gestures, settings overlay, MIDI port handling (device callback, auto-open, send loop at ~125 Hz + 500 ms heartbeat); `ui/Onboarding.kt` setup guide; `ui/Palette.kt` light/dark colours + drawable helpers; `ui/ClickSound.kt` synthesised mouse-click sound; Left/Right button feedback is a setting (silent / audible / vibration via `Vibrator`, pref `clickFeedback`, migrates the old boolean `sound`); gestures on the pad stay silent; `ui/KeyCapture.kt` (invisible view owning the system keyboard: forwards commits/backspace/Enter/hardware shortcuts, `KeySink`), `ui/KeysScreen.kt` + `ui/KeyLayout.kt` (full-screen keyboard mode, 15-unit rows), `ui/GyroScreen.kt` + `proto/GyroMath.kt` (gyro mode), `ui/AbsoluteScreen.kt` (absolute mode), `ui/Picker.kt` (Mode/Protocol chooser card), `ui/CrashReport.kt` shows the last crash stack trace on next launch (debug aid; there is no logcat access from this environment)
-  - `proto/MouseProtocol.kt` encoder, `proto/FrameScheduler.kt` fractional-delta batching (unit tested)
-  - `export/HelperExporter.kt` copies the bundled helper to `Download/CableMouse` (MediaStore on API 29+, file write + permission below)
+- `app/` — Android app (Kotlin, plain Views built in code, **no Compose**, minSdk 23, targetSdk 35, package `com.cablemouse`; versionName 1.1 / code 2)
+  - source packages: `proto/`, `link/`, `settings/`, `ui/`, `export/HelperExporter.kt` (copies the bundled helper to `Download/CableMouse`: MediaStore on API 29+, file write + permission below); `ui/CrashReport.kt` shows the last crash stack trace on next launch (debug aid; there is no logcat access from the app, but `adb logcat` works from this machine).
   - `src/main/assets/helpers/` bundled `cablemouse-legacy.exe` + `README.txt`; generated by `make -C helper assets` and **committed** so the APK builds without MinGW. Rerun and commit whenever helper code changes.
-- `helper/` — C helper: `common/protocol.[ch]` pure decoder, `backends/{win,linux,mac}.c`, `main.c` (loop, heartbeat timeout, reopen/restart logic), `backend.h`, `tests/`, `dist/README.txt`, `Makefile`
+- `helper/` — C helper (see Architecture), `tests/`, `dist/README.txt`, `Makefile`
 - `testvectors/protocol.txt` — wire-protocol vectors shared by the C and Kotlin tests
-- `scripts/build-release.sh` — tests + helper + signed APK + `dist/` with checksums
+- `scripts/build-release.sh` — tests + helper + signed APK + `dist/` with checksums (`GRADLE=gradle` to use the system Gradle)
+- `.github/workflows/ci.yml` — CI (tests, helper builds, debug APK); signs and publishes nothing
 - Launcher icon: adaptive vector (`res/drawable/ic_launcher_foreground.xml`) + PNG fallbacks; PNGs were rendered from an SVG with `rsvg-convert`.
 
 ## Wire protocol (keep Kotlin and C in sync)
@@ -38,10 +50,10 @@ Any protocol change must update: `PLAN.md`, `proto/MouseProtocol.kt`, `helper/co
 
 ## Commands and toolchain (this machine: WSL2 Ubuntu-like, user `karim`)
 - Env: `export JAVA_HOME=~/opt/temurin-21 PATH=~/opt/temurin-21/bin:$PATH` (JDK is not on PATH by default). Android SDK in `~/opt/android-sdk` (cmdline-tools, platform 35, build-tools 35.0.0, platform-tools), referenced by git-ignored `local.properties`.
-- Use the system `gradle` (9.3.1) rather than `./gradlew` here: the wrapper would download 130 MB. Both are the same version.
-- Tests: `make -C helper test` (35 C tests) and `gradle :app:testDebugUnitTest` (Kotlin tests, incl. shared vectors and layout row widths). UI/MIDI/USB behaviour has no automated tests; it needs a phone + PC.
+- Use the system `gradle` (9.3.1) rather than `./gradlew` here: the wrapper would download 130 MB. Both are the same version. The release script takes `GRADLE=gradle`.
+- Tests: `make -C helper test` (35 protocol tests + stream-check tests) and `gradle :app:testDebugUnitTest` (15 Kotlin tests: shared vectors, gyro maths, layout, settings). UI/MIDI/USB behaviour has no automated tests; it needs a phone + PC.
 - Helper builds: `make -C helper legacy` (Windows exe, needs `i686-w64-mingw32-gcc`), `make -C helper linux`, `make -C helper assets`.
-- Release: `./scripts/build-release.sh` (needs git-ignored `keystore.properties`; keystore at `~/.cablemouse/release.jks`, passwords only in `keystore.properties`; back it up, losing it blocks updates). Publish with `gh release create v<x> dist/app-release.apk dist/cablemouse-legacy.exe dist/SHA256SUMS.txt` (see README). The Windows exe build is reproducible (`--no-insert-timestamp`); the APK is not.
+- Release: `GRADLE=gradle ./scripts/build-release.sh` (needs git-ignored `keystore.properties`; keystore at `~/.cablemouse/release.jks`, passwords only in `keystore.properties`; back it up, losing it blocks updates). Publish with `gh release create v<x> dist/app-release.apk dist/cablemouse-legacy.exe dist/SHA256SUMS.txt` (see README). The Windows exe build is reproducible (`--no-insert-timestamp`); the APK is not.
 - No Kotlin/Native shortcut: `kotlinc-native` also needs the JDK.
 
 ## Working agreements (from the user)

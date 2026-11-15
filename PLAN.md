@@ -18,7 +18,7 @@ Without root, Android can't present itself as a USB HID mouse. So the design is 
   - Android Open Accessory (AOA): needs a WinUSB driver on Windows.
   - ADB: needs developer mode, plus a driver on Windows.
 
-## Status (2026-11-13)
+## Status (2026-11-15)
 Legend: **verified** = confirmed by the user on real hardware (Android 15 phone, Windows 10/11 PC); **built** = implemented, builds, unit-tested where possible, not confirmed on hardware; **todo** = not done.
 
 | Phase | State | Notes |
@@ -42,6 +42,21 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
    → MidiInputPort (USB peripheral) ──USB-MIDI──→ → OS cursor/click/scroll injection
  bundled helpers exported to Download/CableMouse  (SendInput / CGEventPost / XTest)
 ```
+
+### Code structure and boundaries
+The Android app is split so that each layer depends only on the ones below it, and screens depend on interfaces, not on the activity:
+```
+MainActivity            wires everything; owns the window (insets, orientation, back), permissions, helper delivery
+  ui/                   Ui (dp + widgets + Palette) · Mode / ModeScreen / ModeController / ModeHost ·
+                        MouseScreen (Mouse, Mouse + typing) · KeysScreen · GyroScreen · AbsoluteScreen ·
+                        Touchpad · MouseButtons · KeyCapture · SettingsScreen · Onboarding · Picker + ModeMenu · ClickFeedback
+  settings/             Settings + Pref<T>: live value (this session) vs save() (start-up default)
+  link/                 Transport (interface) · LinkListener · MidiLink (USB-cable implementation)
+  proto/                MouseProtocol · FrameScheduler · GyroMath   (pure, unit-tested)
+```
+- The screens call only `Transport.send/addMove/addScroll`. A Bluetooth transport (the disabled Protocol entry) means writing a second `Transport`; no screen changes.
+- A mode is a `ModeScreen` registered in `MainActivity`; options shown in the Mode menu live in `ModeMenu`; persisted defaults live in `Settings` and are edited in `SettingsScreen`.
+- Helper (C): `common/protocol` (pure decoder) and `common/stream_check` (pure, tested) · `backend.h` (platform interface) with `backends/{win,linux,mac}.c` · `main.c` (policy only).
 
 ### Wire protocol (MIDI channel 1, 3-byte messages, 7-bit safe)
 - `B0 01 v`: dx, where v = dx + 64 (range −64..63). Larger moves are split into several messages.
@@ -120,10 +135,11 @@ One C codebase builds two outputs:
 28. Absolute positioning mode (phone pad maps to the PC's primary screen) — done.
 
 ## Critical files
-- `app/src/main/java/com/cablemouse/proto/MouseProtocol.kt` and `FrameScheduler.kt`
-- `app/src/main/java/com/cablemouse/ui/MainActivity.kt` (touchpad, settings, MIDI port), `Onboarding.kt`, `Palette.kt`, `ClickSound.kt`
+- `app/src/main/java/com/cablemouse/proto/` (protocol encoder, batching, gyro maths) and `link/` (`Transport`, `MidiLink`)
+- `app/src/main/java/com/cablemouse/settings/Settings.kt` and `ui/` (`MainActivity` wiring, `ModeController`, the screens)
 - `app/src/main/java/com/cablemouse/export/HelperExporter.kt`: MediaStore copy to Download/CableMouse
-- `helper/main.c`, `helper/common/protocol.c`, `helper/backends/{win,linux,mac}.c`, `helper/Makefile` (cosmocc and MinGW targets)
+- `helper/main.c`, `helper/common/{protocol,stream_check}.c`, `helper/backends/{win,linux,mac}.c`, `helper/Makefile` (cosmocc and MinGW targets)
+- `testvectors/protocol.txt`: shared by the C and Kotlin protocol tests
 
 ## Verification
 - Phase 0 step 3 proves the transport: bytes from the app reach a PC MIDI monitor.
@@ -143,3 +159,5 @@ One C codebase builds two outputs:
 - **Some antivirus tools** flag programs that inject input, and polyglot APE files get flagged more often. Keep the helper small and its source open.
 - **Legacy exe and the C runtime.** The `cablemouse-legacy.exe` built on the current dev machine links the Universal C Runtime (`api-ms-win-crt-*`), so it needs Windows 10/11, or Windows 7/8.1 with the UCRT update (KB2999226). Windows XP/Vista need a build from an msvcrt-based MinGW (for example MSYS2 `mingw32`); this has not been done or tested.
 - **APE limits.** It needs a 64-bit OS and Windows 8+. That's why the legacy exe target exists (with the runtime caveat above). On macOS, APE starts through the shell, and Apple Silicon needs Cosmopolitan's small loader. The spike (Phase 5, step 18) checks this early.
+- **Bluetooth (todo).** The Protocol button lists it but it is disabled. It needs a second `link.Transport` on the phone and a matching input source in the helper; the protocol bytes stay the same.
+- **Phone as a webcam (decided: separate app).** Checked on the HONOR X9c (Android 15): the USB chooser offers Transfer photos, Transfer files / Android Auto, Charge only, Reverse charge and MIDI, with no Webcam entry, and an app cannot add a USB gadget function without root. A true USB camera is therefore impossible here. The feasible design is a separate app that streams camera video over a cable network link (USB tethering) to an OBS Media Source (HTTP MJPEG / RTSP / SRT). It does not belong in Cable Mouse, which should keep asking for almost no permissions.
