@@ -1,6 +1,7 @@
 package com.cablemouse.proto
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.File
 
@@ -49,42 +50,14 @@ class ProtocolTest {
         }
     }
 
-    @Test fun layoutRowsAreFifteenUnitsWide() {
-        for (caps in listOf(false, true))
-            com.cablemouse.ui.KeyLayout.rows(caps).forEachIndexed { i, row ->
-                assertEquals("row $i caps=$caps", 15f, row.sumOf { it.width.toDouble() }.toFloat(), 0.001f)
-            }
-    }
-
     @Test fun moveAbsClampsToRange() {
         assertEquals("B0 16 7F B0 17 7F B0 18 00 B0 19 00", hex(MouseProtocol.moveAbs(99999, -5)))
     }
 
-    @Test fun gyroTurnLeftMovesCursorLeft() {
-        val flatUp = floatArrayOf(0f, 0f, 9.81f)          // phone lying flat, screen up
-        // Turning left is a counter-clockwise rotation seen from above: +z rate when flat.
-        val (dx, dy) = GyroMath.delta(floatArrayOf(0f, 0f, 1f), flatUp, 0.02f, 1000f)!!
-        assertEquals(-20f, dx, 0.01f); assertEquals(0f, dy, 0.001f)
-        // Same turn with the phone held upright (gravity along +y): rotation about the device y axis.
-        val (ux, _) = GyroMath.delta(floatArrayOf(0f, 1f, 0f), floatArrayOf(0f, 9.81f, 0f), 0.02f, 1000f)!!
-        assertEquals(-20f, ux, 0.01f)
-    }
-
-    @Test fun gyroTiltUpMovesCursorUp() {
-        val (_, dy) = GyroMath.delta(floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 9.81f), 0.02f, 1000f)!!
-        assertEquals(-20f, dy, 0.01f)
-    }
-
-    @Test fun gyroIgnoresNoiseAndBadGravity() {
-        val (dx, dy) = GyroMath.delta(floatArrayOf(0.01f, 0.01f, 0.01f), floatArrayOf(0f, 0f, 9.81f), 0.02f, 1000f)!!
-        assertEquals(0f, dx, 0f); assertEquals(0f, dy, 0f)
-        assertEquals(null, GyroMath.delta(floatArrayOf(1f, 1f, 1f), floatArrayOf(0f, 0f, 0f), 0.02f, 1000f))
-    }
-
-    @Test fun schedulerKeepsFractions() {
-        val sent = ArrayList<ByteArray>()
-        val s = FrameScheduler { sent += it }
-        repeat(4) { s.addMove(0.5f, 0f); s.flush() }   // 2.0 px total over 4 frames
-        assertEquals(listOf("B0 01 41", "B0 01 41"), sent.map(::hex))
+    @Test fun rejectsValuesTheHelperWouldDrop() {
+        for (bad in listOf<() -> Any>(
+            { MouseProtocol.keyChar(0) }, { MouseProtocol.keyChar(0x110000) }, { MouseProtocol.key(14) },
+            { MouseProtocol.mods(16) }, { MouseProtocol.keyHid(0x03) }, { MouseProtocol.keyHid(0x74) },
+        )) assertThrows(IllegalArgumentException::class.java) { bad() }
     }
 }

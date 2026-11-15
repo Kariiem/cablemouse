@@ -15,6 +15,7 @@ class FrameScheduler(private val send: (ByteArray) -> Unit) {
 
     @Synchronized fun flush() {
         val ix = accX.toInt(); val iy = accY.toInt(); val isc = accScroll.toInt()
+        if (ix == 0 && iy == 0 && isc == 0) return      // the usual case at 125 Hz: no whole pixel to send yet
         accX -= ix; accY -= iy; accScroll -= isc
         MouseProtocol.moveX(ix).forEach(send)
         MouseProtocol.moveY(iy).forEach(send)
