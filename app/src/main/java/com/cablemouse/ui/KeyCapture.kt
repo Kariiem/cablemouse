@@ -1,6 +1,7 @@
 package com.cablemouse.ui
 
 import android.content.Context
+import android.graphics.Rect
 import android.text.InputType
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
@@ -10,10 +11,10 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import com.cablemouse.proto.MouseProtocol
 
-/** Receives what the user types; the activity turns it into protocol messages. */
+/** Receives what the user types; [MouseScreen] turns it into protocol messages. */
 interface KeySink {
     fun onChar(codePoint: Int)
-    fun onKey(key: Int)          // one of MouseProtocol.KEY_*
+    fun onKey(key: Int)                // one of MouseProtocol.KEY_*
     fun onCombo(mods: Int, hid: Int)   // modifiers (MouseProtocol.MOD_*) + a physical key, e.g. Ctrl+C
 }
 
@@ -34,7 +35,7 @@ class KeyCaptureView(
     override fun onCheckIsTextEditor() = true
 
     // A key-up never arrives if focus moves while Caps is down, which would leave Ctrl stuck on.
-    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         if (!gainFocus) capsDown = false
     }

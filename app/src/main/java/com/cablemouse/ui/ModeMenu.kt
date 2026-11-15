@@ -17,9 +17,9 @@ class ModeMenu(
 
     fun showModes() = picker.show(
         "Mode",
-        Mode.values().map { Picker.Item(it.title, it.subtitle, options = optionsFor(it)) },
+        Mode.entries.map { Picker.Item(it.title, it.subtitle, options = optionsFor(it)) },
         modes.mode.ordinal,
-    ) { modes.switchTo(Mode.values()[it]) }
+    ) { modes.switchTo(Mode.entries[it]) }
 
     fun showProtocols() = picker.show(
         "Protocol",

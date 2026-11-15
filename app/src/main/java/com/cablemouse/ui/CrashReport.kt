@@ -17,7 +17,11 @@ import java.io.File
 object CrashReport {
     private const val FILE = "last_crash.txt"
 
+    private var installed = false
+
     fun install(a: Activity) {
+        if (installed) return              // the activity is recreated (theme change); chain the handler only once
+        installed = true
         val dir = a.applicationContext.filesDir
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

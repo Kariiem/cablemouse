@@ -1,11 +1,13 @@
 package com.cablemouse.ui
 
 import android.annotation.SuppressLint
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.cablemouse.link.Transport
@@ -103,23 +105,23 @@ class KeysScreen(
             gravity = Gravity.CENTER
             maxLines = 1
             textSize = if (spec.label.length == 1) 18f else 12f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(pal.text)
             background = pal.pressable(pal.card, pal.pressed, ui.dpf(8), pal.stroke, 1)
             isSoundEffectsEnabled = false
             isHapticFeedbackEnabled = false
         }
         val m = ui.dp(2)
-        val holder = android.widget.FrameLayout(ui.context).apply {
+        val holder = FrameLayout(ui.context).apply {
             setPadding(m, m, m, m)
-            addView(tv, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(tv, FrameLayout.LayoutParams(-1, -1))
         }
         if (spec.mod != 0) {
             val bit = Integer.numberOfTrailingZeros(spec.mod)
             val state = Mod()
             var down = false
             modViews += tv to spec.mod
-            tv.setOnTouchListener { v, e ->
+            tv.setOnTouchListener { _, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         down = true; state.used = false; state.at = e.eventTime

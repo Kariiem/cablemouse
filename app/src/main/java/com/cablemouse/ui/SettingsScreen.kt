@@ -9,6 +9,7 @@ import android.widget.TextView
 import com.cablemouse.link.LinkDevice
 import com.cablemouse.link.LinkListener
 import com.cablemouse.link.MidiLink
+import com.cablemouse.settings.Pref
 import com.cablemouse.settings.Settings
 
 /**
@@ -163,6 +164,6 @@ class SettingsScreen(
     }
 
     /** A switch bound to a boolean setting: flipping it changes the live value and saves it as the default. */
-    private fun switch(text: String, pref: com.cablemouse.settings.Pref<Boolean>) =
+    private fun switch(text: String, pref: Pref<Boolean>) =
         ui.toggle(text, pref.value) { pref.value = it; pref.save() }
 }

@@ -7,6 +7,7 @@ import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.annotation.TargetApi
 import java.io.File
 
 /**
@@ -51,6 +52,7 @@ object HelperExporter {
         else -> "application/octet-stream"
     }
 
+    @TargetApi(29)
     private fun writeMediaStore(ctx: Context, name: String, bytes: ByteArray) {
         val resolver = ctx.contentResolver
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
@@ -70,7 +72,12 @@ object HelperExporter {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val uri = resolver.insert(collection, values) ?: error("Could not create $name in Downloads.")
-        resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("Could not write $name.")
+        try {
+            resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("Could not write $name.")
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }      // don't leave a half-written pending file behind
+            throw e
+        }
         resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
     }
 
