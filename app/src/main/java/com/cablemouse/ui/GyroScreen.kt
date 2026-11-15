@@ -13,8 +13,10 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.cablemouse.link.Transport
 import com.cablemouse.proto.GyroMath
 import com.cablemouse.proto.MouseProtocol
+import com.cablemouse.settings.Settings
 
 /**
  * Gyro mode: the cursor follows the phone's rotation. A big round button sits in the middle.
@@ -22,19 +24,25 @@ import com.cablemouse.proto.MouseProtocol
  * - hold-to-aim off: the cursor always follows; the round button is a left-click button (hold it to drag).
  */
 class GyroScreen(
-    private val activity: MainActivity,
-    private val send: (ByteArray) -> Unit,
-    private val feedback: (Boolean) -> Unit,
-    private val move: (Float, Float) -> Unit,
+    private val ui: Ui,
+    private val transport: Transport,
+    private val settings: Settings,
+    private val feedback: ButtonFeedback,
     private val onExit: () -> Unit,
-) : SensorEventListener {
-    private val pal get() = activity.pal
-    private val sm = activity.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+) : ModeScreen, SensorEventListener {
+    private val pal get() = ui.pal
+    private val send: (ByteArray) -> Unit = transport::send
+    private val move: (Float, Float) -> Unit = transport::addMove
+    private val sm = ui.context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gyro: Sensor? = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val gravity: Sensor? = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
     private val accel: Sensor? = if (gravity == null) sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) else null
 
-    val view = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+    override val view = LinearLayout(ui.context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(14))
+    }
+    override val keepsScreenOn get() = true
     val available get() = gyro != null && (gravity != null || accel != null)
 
     private var holdToAim = true
@@ -44,37 +52,43 @@ class GyroScreen(
     private val up = floatArrayOf(0f, 0f, 9.81f)
     private var clicking = false
 
-    fun rebuild(holdToAim: Boolean, pxPer10Deg: Float) {
+    override fun enter(mode: Mode) {
+        rebuild(settings.gyroHold.value, settings.gyroSpeed.value)
+        start()
+    }
+
+    override fun exit() = stop()
+    override fun onPause() = stop()
+    override fun onResume() = start()
+
+    private fun rebuild(holdToAim: Boolean, pxPer10Deg: Float) {
         stop()
         this.holdToAim = holdToAim
         this.pxPerRad = pxPer10Deg / GyroMath.RAD_PER_10_DEG
         view.removeAllViews()
 
-        val bar = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        bar.addView(activity.pill("Mouse") { stop(); onExit() }, LinearLayout.LayoutParams(-2, -2))
-        bar.addView(activity.label(if (holdToAim) "Gyro mode  ·  hold the circle to aim" else "Gyro mode  ·  always aiming", 13f, pal.muted).apply {
-            setPadding(activity.dp(14), 0, 0, 0)
+        val bar = LinearLayout(ui.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        bar.addView(ui.pill("Mouse") { onExit() }, LinearLayout.LayoutParams(-2, -2))
+        bar.addView(ui.label(if (holdToAim) "Gyro mode  ·  hold the circle to aim" else "Gyro mode  ·  always aiming", 13f, pal.muted).apply {
+            setPadding(ui.dp(14), 0, 0, 0)
         })
-        view.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = activity.dp(12) })
+        view.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
 
-        val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-        buttons.addView(activity.mouseButton("Left", MouseProtocol.BTN_LEFT), LinearLayout.LayoutParams(0, activity.dp(68), 1f).apply { rightMargin = activity.dp(6) })
-        buttons.addView(activity.mouseButton("Right", MouseProtocol.BTN_RIGHT), LinearLayout.LayoutParams(0, activity.dp(68), 1f).apply { leftMargin = activity.dp(6) })
-        view.addView(buttons)
+        view.addView(mouseButtonRow(ui, transport, feedback, 68))
 
-        val area = FrameLayout(activity)
+        val area = FrameLayout(ui.context)
         if (!available) {
-            area.addView(activity.label("This phone has no gyroscope sensor.", 15f, pal.muted).apply { gravity = Gravity.CENTER },
+            area.addView(ui.label("This phone has no gyroscope sensor.", 15f, pal.muted).apply { gravity = Gravity.CENTER },
                 FrameLayout.LayoutParams(-1, -1))
         } else {
-            val size = activity.dp(230)
+            val size = ui.dp(230)
             area.addView(circle(), FrameLayout.LayoutParams(size, size, Gravity.CENTER))
         }
         view.addView(area, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun circle() = TextView(activity).apply {
+    private fun circle() = TextView(ui.context).apply {
         text = if (holdToAim) "Hold\nto aim" else "Click"
         gravity = Gravity.CENTER
         textSize = 20f
@@ -84,26 +98,26 @@ class GyroScreen(
         isHapticFeedbackEnabled = false
         background = android.graphics.drawable.StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), pal.oval(pal.accent))
-            addState(intArrayOf(), pal.oval(pal.card).also { (it as android.graphics.drawable.GradientDrawable).setStroke(activity.dp(2), pal.stroke) })
+            addState(intArrayOf(), pal.oval(pal.card).also { (it as android.graphics.drawable.GradientDrawable).setStroke(ui.dp(2), pal.stroke) })
         }
         setOnTouchListener { v, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     v.isPressed = true; (v as TextView).setTextColor(pal.onAccent)
                     if (holdToAim) { lastT = 0; aiming = true }
-                    else { clicking = true; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, true)); feedback(true) }
+                    else { clicking = true; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, true)); feedback.press() }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.isPressed = false; (v as TextView).setTextColor(pal.text)
                     if (holdToAim) aiming = false
-                    else if (clicking) { clicking = false; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, false)); feedback(false) }
+                    else if (clicking) { clicking = false; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, false)); feedback.release() }
                 }
             }
             true
         }
     }
 
-    fun start() {
+    private fun start() {
         if (!available) return
         aiming = !holdToAim
         lastT = 0
@@ -111,7 +125,7 @@ class GyroScreen(
         (gravity ?: accel)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
     }
 
-    fun stop() {
+    private fun stop() {
         sm.unregisterListener(this)
         aiming = false
         if (clicking) { clicking = false; send(MouseProtocol.button(MouseProtocol.BTN_LEFT, false)) }

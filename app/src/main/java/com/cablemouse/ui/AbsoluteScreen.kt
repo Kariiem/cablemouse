@@ -6,7 +6,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import com.cablemouse.link.Transport
 import com.cablemouse.proto.MouseProtocol
+import com.cablemouse.settings.Settings
 import kotlin.math.hypot
 import kotlin.math.min
 
@@ -16,12 +18,23 @@ import kotlin.math.min
  * ratio is a setting (16:9 by default). Left/Right buttons sit below; an optional quick tap clicks.
  */
 class AbsoluteScreen(
-    private val activity: MainActivity,
-    private val send: (ByteArray) -> Unit,
+    private val ui: Ui,
+    private val transport: Transport,
+    private val settings: Settings,
+    private val feedback: ButtonFeedback,
     private val onExit: () -> Unit,
-) {
-    private val pal get() = activity.pal
-    val view = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+) : ModeScreen {
+    private val pal get() = ui.pal
+    private val send: (ByteArray) -> Unit = transport::send
+
+    override val view = LinearLayout(ui.context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(14))
+    }
+    override val needsLandscape get() = true
+
+    override fun enter(mode: Mode) = rebuild(Settings.ABS_ASPECTS[settings.absAspect.value].second, settings.absTapClick.value)
+    override fun exit() {}
 
     private var tapClick = true
     private var downAt = 0L
@@ -30,23 +43,23 @@ class AbsoluteScreen(
     private var travel = 0f
 
     @SuppressLint("ClickableViewAccessibility")
-    fun rebuild(aspect: Float, tapClick: Boolean) {
+    private fun rebuild(aspect: Float, tapClick: Boolean) {
         this.tapClick = tapClick
         view.removeAllViews()
 
-        val bar = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        bar.addView(activity.pill("Mouse") { onExit() }, LinearLayout.LayoutParams(-2, -2))
-        bar.addView(activity.label("Absolute mode  ·  touch = cursor position" + if (tapClick) "  ·  tap clicks" else "", 13f, pal.muted).apply {
-            setPadding(activity.dp(14), 0, 0, 0)
+        val bar = LinearLayout(ui.context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        bar.addView(ui.pill("Mouse") { onExit() }, LinearLayout.LayoutParams(-2, -2))
+        bar.addView(ui.label("Absolute mode  ·  touch = cursor position" + if (tapClick) "  ·  tap clicks" else "", 13f, pal.muted).apply {
+            setPadding(ui.dp(14), 0, 0, 0)
         })
-        view.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = activity.dp(8) })
+        view.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(8) })
 
-        val area = FrameLayout(activity)
-        val pad = FrameLayout(activity).apply {
-            background = pal.rounded(pal.pad, activity.dpf(18), pal.stroke, 1)
+        val area = FrameLayout(ui.context)
+        val pad = FrameLayout(ui.context).apply {
+            background = pal.rounded(pal.pad, ui.dpf(18), pal.stroke, 1)
             isSoundEffectsEnabled = false
             isHapticFeedbackEnabled = false
-            addView(activity.label("Touch to place the cursor", 14f, pal.muted).apply { gravity = Gravity.CENTER; alpha = 0.7f },
+            addView(ui.label("Touch to place the cursor", 14f, pal.muted).apply { gravity = Gravity.CENTER; alpha = 0.7f },
                 FrameLayout.LayoutParams(-1, -1))
         }
         area.addView(pad, FrameLayout.LayoutParams(10, 10, Gravity.CENTER))
@@ -67,7 +80,7 @@ class AbsoluteScreen(
                     place(v, e)
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (tapClick && e.eventTime - downAt < MainActivity.TAP_MS && travel < activity.dp(MainActivity.TAP_SLOP_DP)) {
+                    if (tapClick && e.eventTime - downAt < Gesture.TAP_MS && travel < ui.dp(Gesture.TAP_SLOP_DP)) {
                         send(MouseProtocol.button(MouseProtocol.BTN_LEFT, true))
                         send(MouseProtocol.button(MouseProtocol.BTN_LEFT, false))
                     }
@@ -77,10 +90,7 @@ class AbsoluteScreen(
         }
         view.addView(area, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-        buttons.addView(activity.mouseButton("Left", MouseProtocol.BTN_LEFT), LinearLayout.LayoutParams(0, activity.dp(60), 1f).apply { rightMargin = activity.dp(6) })
-        buttons.addView(activity.mouseButton("Right", MouseProtocol.BTN_RIGHT), LinearLayout.LayoutParams(0, activity.dp(60), 1f).apply { leftMargin = activity.dp(6) })
-        view.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = activity.dp(8) })
+        view.addView(mouseButtonRow(ui, transport, feedback, 60), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
     }
 
     private fun place(v: View, e: MotionEvent) {

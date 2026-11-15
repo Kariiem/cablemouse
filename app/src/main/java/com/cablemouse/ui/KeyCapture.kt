@@ -33,6 +33,14 @@ class KeyCaptureView(
 
     override fun onCheckIsTextEditor() = true
 
+    // A key-up never arrives if focus moves while Caps is down, which would leave Ctrl stuck on.
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (!gainFocus) capsDown = false
+    }
+
+    override fun onDetachedFromWindow() { capsDown = false; super.onDetachedFromWindow() }
+
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
