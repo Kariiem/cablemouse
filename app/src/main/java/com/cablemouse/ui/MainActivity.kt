@@ -15,6 +15,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -71,7 +73,8 @@ class MainActivity : Activity(), KeySink {
     @Volatile private var pxPerInch = DEFAULT_PX_PER_INCH            // cursor px per inch of finger travel
     @Volatile private var scrollClicksPerInch = DEFAULT_SCROLL
     @Volatile private var invertScroll = false
-    private var soundOn = true
+    private var clickFeedback = FEEDBACK_AUDIBLE
+    private var vibrator: Vibrator? = null
     private var themeMode = THEME_SYSTEM
 
     private val scheduler = FrameScheduler { b -> runCatching { port?.send(b, 0, b.size) } }
@@ -118,7 +121,11 @@ class MainActivity : Activity(), KeySink {
         pxPerInch = p.getFloat("pxPerInch", DEFAULT_PX_PER_INCH)
         scrollClicksPerInch = p.getFloat("scrollPerInch", DEFAULT_SCROLL)
         invertScroll = p.getBoolean("invertScroll", false)
-        soundOn = p.getBoolean("sound", true)
+        // Older versions stored a boolean "sound" setting; keep honouring it until the new setting is chosen.
+        clickFeedback = if (p.contains("clickFeedback")) p.getInt("clickFeedback", FEEDBACK_AUDIBLE)
+            else if (p.getBoolean("sound", true)) FEEDBACK_AUDIBLE else FEEDBACK_SILENT
+        @Suppress("DEPRECATION")
+        vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
         capsAsCtrl = p.getBoolean("capsCtrl", false)
         stickyMods = p.getBoolean("stickyMods", false)
         themeMode = p.getInt("theme", THEME_SYSTEM)
@@ -312,12 +319,12 @@ class MainActivity : Activity(), KeySink {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     v.isPressed = true
-                    if (soundOn) sound.playDown()
+                    clickFeedback(down = true)
                     sendBytes(MouseProtocol.button(btn, true))
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.isPressed = false
-                    if (soundOn) sound.playUp()
+                    clickFeedback(down = false)
                     sendBytes(MouseProtocol.button(btn, false))
                 }
             }
@@ -362,6 +369,31 @@ class MainActivity : Activity(), KeySink {
 
     override fun onChar(codePoint: Int) = sendBytes(MouseProtocol.keyChar(codePoint))
     override fun onKey(key: Int) = sendBytes(MouseProtocol.key(key))
+
+    /** Left/Right button feedback: nothing, the synthesised click, or a short vibration (a stronger one on press). */
+    private fun clickFeedback(down: Boolean) {
+        when (clickFeedback) {
+            FEEDBACK_AUDIBLE -> if (down) sound.playDown() else sound.playUp()
+            FEEDBACK_VIBRATE -> vibrator?.takeIf { it.hasVibrator() }?.let { v ->
+                if (Build.VERSION.SDK_INT >= 26) {
+                    val strong = v.hasAmplitudeControl()
+                    val effect = when {
+                        // Press: a firm full-amplitude pulse (the stock CLICK effect is faint on many phones).
+                        down && strong -> VibrationEffect.createOneShot(30L, 255)
+                        down && Build.VERSION.SDK_INT >= 29 -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
+                        down -> VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE)
+                        // Release: a lighter tick.
+                        strong -> VibrationEffect.createOneShot(12L, 140)
+                        Build.VERSION.SDK_INT >= 29 -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                        else -> VibrationEffect.createOneShot(12L, VibrationEffect.DEFAULT_AMPLITUDE)
+                    }
+                    v.vibrate(effect)
+                } else {
+                    @Suppress("DEPRECATION") v.vibrate(if (down) 30L else 12L)
+                }
+            }
+        }
+    }
 
     private fun sendBytes(b: ByteArray) { runCatching { port?.send(b, 0, b.size) } }
 
@@ -533,10 +565,25 @@ class MainActivity : Activity(), KeySink {
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         })
 
-        add(card("Sound") {
-            addView(toggle("Mouse click sound (Left / Right buttons only)", soundOn) {
-                soundOn = it; prefs().edit().putBoolean("sound", it).apply()
-            })
+        add(card("Click feedback (Left / Right buttons)") {
+            val group = RadioGroup(this@MainActivity).apply { orientation = RadioGroup.VERTICAL }
+            for ((mode, name) in listOf(
+                FEEDBACK_SILENT to "Silent",
+                FEEDBACK_AUDIBLE to "Audible clicks",
+                FEEDBACK_VIBRATE to "Vibration (physical click effect)",
+            )) {
+                group.addView(RadioButton(this@MainActivity).apply {
+                    id = 2000 + mode; text = name; setTextColor(pal.text); buttonTintList = pal.accentTint()
+                    isChecked = clickFeedback == mode
+                    setPadding(dp(4), dp(8), dp(16), dp(8))
+                })
+            }
+            group.setOnCheckedChangeListener { _, id ->
+                clickFeedback = id - 2000
+                prefs().edit().putInt("clickFeedback", clickFeedback).apply()
+                clickFeedback(down = true)                    // let the user feel / hear the choice
+            }
+            addView(group)
         })
 
         add(card("Keyboard") {
@@ -725,6 +772,9 @@ class MainActivity : Activity(), KeySink {
         const val SENS_MAX = 2500
         const val DEFAULT_SCROLL = 6f
         const val SCROLL_MAX = 20
+        const val FEEDBACK_SILENT = 0
+        const val FEEDBACK_AUDIBLE = 1
+        const val FEEDBACK_VIBRATE = 2
         const val TAP_MS = 250L
         const val DRAG_WINDOW_MS = 300L
         const val TAP_SLOP_DP = 10
