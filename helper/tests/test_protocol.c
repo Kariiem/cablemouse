@@ -3,6 +3,7 @@
 #include <string.h>
 #include "../common/protocol.h"
 
+/* Vector-file names of the events, in cm_ev_type order. */
 static const char *names[] = {"move_x", "move_y", "scroll", "down", "up", "heartbeat", "key_char", "key_special", "mods", "key_hid", "move_abs"};
 
 int main(int argc, char **argv) {
@@ -14,14 +15,18 @@ int main(int argc, char **argv) {
         char *bar = strchr(line, '|'); if (!bar) continue;
         *bar = 0;
         char name[32]; int want;
-        if (sscanf(bar + 1, " %31s | %d", name, &want) != 2) { fail++; continue; }
-        cm_decoder d; cm_decoder_init(&d); cm_event ev; int got = 0;
-        for (char *p = line, *e; (unsigned long)(strtoul(p, &e, 16), e != p); p = e) {
-            if (cm_decoder_feed(&d, (uint8_t)strtoul(p, NULL, 16), &ev)) got++;
+        if (sscanf(bar + 1, " %31s | %d", name, &want) != 2) { printf("FAIL: bad vector line: %s|%s", line, bar + 1); n++; fail++; continue; }
+        cm_decoder d; cm_decoder_init(&d); cm_event ev = {EV_HEARTBEAT, 0}; int got = 0;
+        for (char *p = line, *end;; p = end) {
+            unsigned long byte = strtoul(p, &end, 16);
+            if (end == p) break;
+            if (cm_decoder_feed(&d, (uint8_t)byte, &ev)) got++;
         }
         n++;
         if (got != 1 || strcmp(names[ev.type], name) || ev.value != want) {
-            printf("FAIL: %s-> %s %d (got %d events, last %s %d)\n", line, name, want, got, names[ev.type], ev.value);
+            printf("FAIL: %s-> want %s %d, got %d event(s)", line, name, want, got);
+            if (got) printf(", last %s %d", names[ev.type], ev.value);
+            printf("\n");
             fail++;
         }
     }
@@ -31,6 +36,15 @@ int main(int argc, char **argv) {
         uint8_t s[] = {0xB0,0x01,0x41, 0x02,0x42, 0xF8, 0x01,0x40, 0xB1,0x01,0x41, 0xF0,0x01,0x02,0xF7};
         for (size_t i = 0; i < sizeof s; i++) c += cm_decoder_feed(&d, s[i], &ev);
         n++; if (c != 3) { printf("FAIL: stream test got %d, want 3\n", c); fail++; }
+    }
+    /* a 12-byte absolute position and a 9-byte character split across reads, with a realtime byte inside */
+    {
+        cm_decoder d; cm_decoder_init(&d); cm_event ev = {EV_HEARTBEAT, 0}; int c = 0;
+        uint8_t s[] = {0xB0,0x16,0x07, 0xB0,0x17,0x68, 0xFE, 0xB0,0x18,0x0F, 0xB0,0x19,0x50};
+        for (size_t i = 0; i < sizeof s; i++) c += cm_decoder_feed(&d, s[i], &ev);
+        n++; if (c != 1 || ev.type != EV_MOVE_ABS || ev.value >> 14 != 1000 || (ev.value & CM_ABS_MAX) != 2000) {
+            printf("FAIL: absolute position 1000,2000 decoded as %d events, %d,%d\n", c, ev.value >> 14, ev.value & CM_ABS_MAX); fail++;
+        }
     }
     /* invalid text input must produce no event */
     {
