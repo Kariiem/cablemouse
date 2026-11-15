@@ -30,7 +30,7 @@ Legend: **verified** = confirmed by the user on real hardware (Android 15 phone,
 | 4. Helper delivery over MTP | **built** | Exporter + setup guide; the file appears in the phone's `Download/CableMouse`. Copy to a PC over MTP not verified (blocked on the user's work PC; they use the GitHub release). Only the Windows exe is bundled. |
 | 5. PC helper | Windows **verified**; Linux **built**; macOS/APE **todo** | Windows back end hardened for unplug/replug. Linux X11 back end untested. macOS is a stub; the Cosmopolitan APE (`cablemouse.com`) and its spike (step 18) were not started. |
 | 6. Robustness | mostly **verified** | App auto-reconnects on device add/remove; heartbeat every 500 ms; helper releases buttons after 2 s without heartbeat; version mismatch warning exists. |
-| 7. Extras | **todo** | Keyboard mode, gyro air-mouse, absolute positioning. |
+| 7. Extras | keyboard **verified** (Windows); rest **todo** | **Type** pill (system keyboard, forwarded as Unicode/special keys, hardware-keyboard shortcuts) and **Keys** (full-screen QWERTY, physical keys + held modifiers, forced landscape, key repeat) verified on Windows by the user. Settings: Caps as Ctrl, sticky modifiers (both default off). Linux typing is built but untested; macOS none. **todo:** gyro air-mouse, absolute positioning, Insert/PgUp/PgDn keys on the on-screen keyboard. |
 | Release | **done** | Public repo https://github.com/Kariiem/cablemouse, MIT, release `v1.0` with signed APK, Windows exe and checksums. |
 
 ## Architecture
@@ -49,6 +49,11 @@ Android app (Kotlin)                          PC helper (C): cablemouse.com (APE
 - `B0 03 v`: scroll wheel, same encoding.
 - `90 n 7F` / `80 n 00`: button down / up. n = 0 is left, 1 is right, 2 is middle.
 - `B0 7F v`: heartbeat and protocol version, so the helper can show "connected".
+- Keyboard (additive, version stays 1; unknown controllers are ignored by older helpers):
+  - `B0 10 a`, `B0 11 b`, `B0 12 c`: one Unicode code point, `U = a<<14 | b<<7 | c`, committed by the third message. The phone writes the 9 bytes at once. Windows types it with `KEYEVENTF_UNICODE`, Linux by binding a spare keycode.
+  - `B0 13 k`: special key tap (1 Backspace, 2 Enter, 3 Tab, 4 Esc, 5 Delete, 6 Left, 7 Right, 8 Up, 9 Down, 10 Home, 11 End, 12 PageUp, 13 PageDown).
+  - `B0 14 m`: held modifiers, bits 1 Ctrl / 2 Shift / 4 Alt / 8 Win; helper presses/releases the difference and releases all on heartbeat timeout.
+  - `B0 15 u`: tap the key with USB HID usage `u` (0x04..0x73) with the held modifiers. Windows maps it to a virtual key, Linux to a keysym and the real keycode.
 
 ## Small-step plan
 
@@ -90,7 +95,7 @@ One C codebase builds two outputs:
 - **`cablemouse.com`**: built with Cosmopolitan `cosmocc` as an Actually Portable Executable. At runtime it picks a back end with `IsWindows()` / `IsXnu()` / `IsLinux()`. Windows DLLs, macOS frameworks and `libXtst` are loaded through `cosmo_dlopen`/`cosmo_dlsym`.
 - **`cablemouse-legacy.exe`**: the Windows back end alone, built with MinGW i686 (`-D LEGACY_WIN32`) and linked directly against `winmm`/`user32`. It runs on 32-bit Windows and on XP/Vista/7.
 
-17. Repo folder `helper/`. Put the protocol decoder in `common/protocol.c` and add host unit tests for it. `main.c` picks a back end through a small interface: `backend_open()`, `backend_read_midi()`, `backend_move()`, `backend_button()`, `backend_scroll()`.
+17. Repo folder `helper/`. Put the protocol decoder in `common/protocol.c` and add host unit tests for it. `main.c` picks a back end through a small interface: `backend_open()`, `backend_read_midi()`, `backend_move()`, `backend_button()`, `backend_scroll()`, and for the keyboard `backend_key_char()`, `backend_key()`, `backend_mods()`, `backend_key_hid()`.
 18. **Spike, before the back ends:** build a "hello" APE with `cosmocc` that calls `cosmo_dlopen("user32.dll")` → `SetCursorPos` on Windows, and does the macOS and Linux equivalents. Confirm it runs on all three. If dlopen doesn't work on some OS, fall back to shipping a native binary for that OS only.
 19. **Windows back end** (`backends/win.c`, shared by the APE and the legacy exe):
     - Use `midiInGetNumDevs`/`midiInGetDevCaps` to find the device whose name contains "Android" (or let the user pick).

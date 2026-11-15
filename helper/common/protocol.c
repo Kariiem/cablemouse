@@ -1,6 +1,6 @@
 #include "protocol.h"
 
-void cm_decoder_init(cm_decoder *d) { d->status = 0; d->d1 = 0; d->have = 0; }
+void cm_decoder_init(cm_decoder *d) { d->status = 0; d->d1 = 0; d->have = 0; d->cp = 0; }
 
 int cm_decoder_feed(cm_decoder *d, uint8_t b, cm_event *ev) {
     if (b >= 0xF8) return 0;                 /* realtime: may appear anywhere */
@@ -20,6 +20,21 @@ int cm_decoder_feed(cm_decoder *d, uint8_t b, cm_event *ev) {
         case 0x02: ev->type = EV_MOVE_Y; ev->value = (int)b - 64; return 1;
         case 0x03: ev->type = EV_SCROLL; ev->value = (int)b - 64; return 1;
         case 0x7F: ev->type = EV_HEARTBEAT; ev->value = b; return 1;
+        /* Text: a code point arrives as three 7-bit groups (bits 20..14, 13..7, 6..0); the last one commits. */
+        case 0x10: d->cp = (uint32_t)b << 14; return 0;
+        case 0x11: d->cp |= (uint32_t)b << 7; return 0;
+        case 0x12: {
+            uint32_t cp = d->cp | b; d->cp = 0;
+            if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return 0;
+            ev->type = EV_KEY_CHAR; ev->value = (int)cp; return 1;
+        }
+        case 0x14: ev->type = EV_MODS; ev->value = b & CM_MOD_ALL; return (b & ~CM_MOD_ALL) == 0;
+        case 0x15:
+            if (b < CM_HID_MIN || b > CM_HID_MAX) return 0;
+            ev->type = EV_KEY_HID; ev->value = b; return 1;
+        case 0x13:
+            if (b < 1 || b > CM_KEY_LAST) return 0;
+            ev->type = EV_KEY_SPECIAL; ev->value = b; return 1;
         }
         return 0;
     case 0x90:

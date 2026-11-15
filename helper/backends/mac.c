@@ -6,4 +6,8 @@ int backend_read_midi(uint8_t *b, int l, int t) { (void)b; (void)l; (void)t; ret
 void backend_move(int dx, int dy) { (void)dx; (void)dy; }
 void backend_button(int b, int d) { (void)b; (void)d; }
 void backend_scroll(int c) { (void)c; }
+void backend_key_char(uint32_t cp) { (void)cp; }
+void backend_key(int k) { (void)k; }
+void backend_mods(int m) { (void)m; }
+void backend_key_hid(int u) { (void)u; }
 void backend_close(void) {}

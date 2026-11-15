@@ -45,9 +45,20 @@ You need the app on the phone and the helper on the PC.
 
 Taps and gestures are silent. The Left/Right buttons play a mouse-click sound (can be turned off).
 
+### Typing
+
+Two ways to type on the PC. Both need a helper from this version or newer (older helpers silently ignore keys).
+
+- **Type** (pill next to the title): opens the phone's own keyboard. Letters, any Unicode character (é, €, emoji), Backspace and Enter are typed on the PC, and a row of Esc / Tab / Del / Home / End / arrow keys appears above the pad. A hardware keyboard plugged into the phone also works, including Ctrl/Alt/Win shortcuts.
+- **Keys** (keyboard mode): the whole screen becomes a PC QWERTY keyboard (Esc, F1-F12, number row, Tab, Caps, Shift, Ctrl, Win, Alt, Space, arrows). It switches the phone to landscape while open; **Mouse** or Back returns. Keys are sent as physical keys, so shortcuts work: hold Ctrl with one finger and tap C with another. Modifiers behave like on a real keyboard (down while touched), so a lone tap on Win opens the Start menu and a lone tap on Alt focuses the menu bar. Held keys repeat. Keys are physical positions, so on a non-US PC layout the symbol keys type what that layout puts there, not the label.
+
+Settings → **Keyboard**:
+- *Caps Lock acts as Ctrl*: the Caps key in keyboard mode becomes Ctrl, and Caps on a hardware keyboard acts as Ctrl in Type mode.
+- *Sticky modifiers*: a short tap on Shift / Ctrl / Alt / Win keeps it on for the next key; tap it again to cancel. Off by default.
+
 ### Settings
 
-Tap the **Cable Mouse** pill at the top. You can set pointer speed, scroll speed and direction, the click sound, and the theme (System, Light or Dark). The Diagnostics card has a test note, a stream test and a clearable log.
+Tap the **Cable Mouse** pill at the top. You can set pointer speed, scroll speed and direction, the click sound, the keyboard options, and the theme (System, Light or Dark). The Diagnostics card has a test note, a stream test and a clearable log.
 
 ### Troubleshooting
 
@@ -71,7 +82,8 @@ The helper reconnects by itself after an unplug/replug. If the cursor feels too 
 - **macOS:** not implemented yet (a stub exists).
 - **Single-file universal helper (`cablemouse.com`, Cosmopolitan APE):** planned in [`PLAN.md`](PLAN.md), not built yet.
 - **Unsigned helper:** SmartScreen and some antivirus/EDR products flag unsigned programs that inject input. The source is small (`helper/`) and the build is reproducible, so you can build it yourself and compare checksums.
-- Not implemented: keyboard input, gyro air-mouse.
+- Not implemented: gyro air-mouse, absolute positioning. Keyboard input exists but is only verified on the Windows helper; the Linux helper's typing is untested and macOS has none.
+- Keyboard mode has no Insert/PageUp/PageDown/Home/End keys (they exist in the protocol; Type mode's key row has Home and End).
 
 ## Development
 
@@ -174,6 +186,12 @@ MIDI channel 1, 3-byte messages, all data bytes 7-bit:
 | `B0 03 v` | scroll wheel, same encoding |
 | `90 n 7F` / `80 n 00` | button `n` down / up (0 left, 1 right, 2 middle) |
 | `B0 7F v` | heartbeat (every 500 ms) carrying the protocol version |
+| `B0 10 a`, `B0 11 b`, `B0 12 c` | type one Unicode code point `U = a<<14 \| b<<7 \| c`; the third message commits it (sent as one 9-byte write) |
+| `B0 13 k` | tap a special key: 1 Backspace, 2 Enter, 3 Tab, 4 Esc, 5 Delete, 6 Left, 7 Right, 8 Up, 9 Down, 10 Home, 11 End, 12 PageUp, 13 PageDown |
+| `B0 14 m` | modifiers held right now, bit mask 1 Ctrl, 2 Shift, 4 Alt, 8 Win; the helper presses/releases the difference. 0 releases all (also done on a 2 s heartbeat timeout) |
+| `B0 15 u` | tap the physical key with USB HID keyboard usage `u` (0x04..0x73) with the modifiers currently held |
+
+New messages are additive: a helper that doesn't know a controller number ignores it, so the protocol version stays 1.
 
 A protocol change must update `PLAN.md`, `MouseProtocol.kt`, `helper/common/protocol.c` and `testvectors/protocol.txt` together.
 

@@ -17,10 +17,12 @@
 #endif
 
 static int held[3];
+static int mods_held;
 static char **g_argv;
 
 static void release_all(void) {
     for (int i = 0; i < 3; i++) if (held[i]) { backend_button(i, 0); held[i] = 0; }
+    if (mods_held) { backend_mods(0); mods_held = 0; }
 }
 
 /* Last-resort recovery: winmm can keep a stale device list/handle until the process restarts,
@@ -85,6 +87,10 @@ int main(int argc, char **argv) {
                 case EV_SCROLL: sc += ev.value; break;
                 case EV_BTN_DOWN: backend_button(ev.value, 1); held[ev.value] = 1; break;
                 case EV_BTN_UP:   backend_button(ev.value, 0); held[ev.value] = 0; break;
+                case EV_KEY_CHAR: backend_key_char((uint32_t)ev.value); break;
+                case EV_KEY_SPECIAL: backend_key(ev.value); break;
+                case EV_MODS: backend_mods(ev.value); mods_held = ev.value; break;
+                case EV_KEY_HID: backend_key_hid(ev.value); break;
                 case EV_HEARTBEAT:
                     if (ev.value != CM_PROTOCOL_VERSION)
                         printf("warning: phone protocol v%d, helper v%d\n", ev.value, CM_PROTOCOL_VERSION);

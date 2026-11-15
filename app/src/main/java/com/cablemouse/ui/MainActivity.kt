@@ -9,6 +9,7 @@ import android.media.midi.MidiDeviceInfo
 import android.media.midi.MidiInputPort
 import android.media.midi.MidiManager
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -17,7 +18,9 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -35,7 +38,7 @@ import kotlin.concurrent.thread
  * Main screen: a centred "Cable Mouse" pill (opens settings), Left/Right buttons, then the touchpad
  * filling the rest. Everything else lives in the settings overlay (Back closes it).
  */
-class MainActivity : Activity() {
+class MainActivity : Activity(), KeySink {
     private lateinit var manager: MidiManager
     internal lateinit var pal: Palette
     private lateinit var sound: ClickSound
@@ -47,6 +50,15 @@ class MainActivity : Activity() {
     private lateinit var log: TextView
     private lateinit var statusText: TextView
     private lateinit var headerDot: View
+    private lateinit var keyCapture: KeyCaptureView
+    private lateinit var keyRow: View
+    private lateinit var mainScreen: View
+    private lateinit var keys: KeysScreen
+    private var capsAsCtrl = false
+    private var stickyMods = false
+    private lateinit var keyboardPill: TextView
+    private var keyboardOn = false
+    private var imeWasVisible = false
     private val ui = Handler(Looper.getMainLooper())
 
     private var device: MidiDevice? = null
@@ -107,6 +119,8 @@ class MainActivity : Activity() {
         scrollClicksPerInch = p.getFloat("scrollPerInch", DEFAULT_SCROLL)
         invertScroll = p.getBoolean("invertScroll", false)
         soundOn = p.getBoolean("sound", true)
+        capsAsCtrl = p.getBoolean("capsCtrl", false)
+        stickyMods = p.getBoolean("stickyMods", false)
         themeMode = p.getInt("theme", THEME_SYSTEM)
 
         val dark = when (themeMode) {
@@ -118,7 +132,13 @@ class MainActivity : Activity() {
         sound = ClickSound()
 
         val root = FrameLayout(this).apply { setBackgroundColor(pal.bg) }
-        root.addView(buildMain(), FrameLayout.LayoutParams(-1, -1))
+        mainScreen = buildMain()
+        root.addView(mainScreen, FrameLayout.LayoutParams(-1, -1))
+        keys = KeysScreen(this, { sendBytes(it) }, { showKeys(false) })
+        keys.view.setPadding(dp(10), dp(8), dp(10), dp(8))
+        root.addView(keys.view, FrameLayout.LayoutParams(-1, -1))
+        keyCapture = KeyCaptureView(this, this) { capsAsCtrl }
+        root.addView(keyCapture, FrameLayout.LayoutParams(dp(1), dp(1)))
         settings = buildSettings().apply {
             visibility = if (savedInstanceState?.getBoolean("settings") == true) View.VISIBLE else View.GONE
         }
@@ -129,12 +149,23 @@ class MainActivity : Activity() {
         }
         root.addView(onboarding, FrameLayout.LayoutParams(-1, -1))
         // targetSdk 35 is edge-to-edge: keep content out from under the status/nav bars and cutout.
+        // The on-screen keyboard is an inset too, so the pad shrinks above it instead of being covered.
         root.setOnApplyWindowInsetsListener { v, insets ->
-            @Suppress("DEPRECATION")
-            v.setPadding(
-                insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-                insets.systemWindowInsetRight, insets.systemWindowInsetBottom
-            )
+            if (Build.VERSION.SDK_INT >= 30) {
+                val i = insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime()
+                )
+                v.setPadding(i.left, i.top, i.right, i.bottom)
+                val imeVisible = insets.isVisible(WindowInsets.Type.ime())
+                if (imeWasVisible && !imeVisible && keyboardOn) setKeyboard(false)   // user dismissed it (back gesture)
+                imeWasVisible = imeVisible
+            } else {
+                @Suppress("DEPRECATION")
+                v.setPadding(
+                    insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom
+                )
+            }
             insets
         }
         setContentView(root)
@@ -159,12 +190,13 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         when {
             ::onboarding.isInitialized && onboarding.visibility == View.VISIBLE -> onboarding.visibility = View.GONE
+            ::keys.isInitialized && keys.view.visibility == View.VISIBLE && !settingsOpen() -> showKeys(false)
             ::settings.isInitialized && settings.visibility == View.VISIBLE -> showSettings(false)
             else -> super.onBackPressed()
         }
     }
 
-    override fun onPause() { endDrag(); super.onPause() }
+    override fun onPause() { endDrag(); if (::keys.isInitialized) keys.releaseAll(); super.onPause() }
 
     override fun onDestroy() {
         running = false
@@ -206,12 +238,62 @@ class MainActivity : Activity() {
         headerDot = View(this).apply { background = pal.oval(pal.off) }
         header.addView(headerDot, LinearLayout.LayoutParams(dp(9), dp(9)).apply { rightMargin = dp(10) })
         header.addView(label("Cable Mouse", 16f, pal.text, bold = true))
-        main.addView(header, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(12) })
+        keyboardPill = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            isClickable = true
+            isSoundEffectsEnabled = false
+            setOnClickListener { setKeyboard(!keyboardOn) }
+        }
+        updateKeyboardPill()
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        top.addView(header)
+        top.addView(keyboardPill, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        top.addView(TextView(this).apply {
+            text = "Keys"
+            gravity = Gravity.CENTER
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(pal.text)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = pal.pressable(pal.card, pal.pressed, dpf(24), pal.stroke, 1)
+            isClickable = true
+            isSoundEffectsEnabled = false
+            setOnClickListener { showKeys(true) }
+        }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        main.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
 
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         buttons.addView(mouseButton("Left", MouseProtocol.BTN_LEFT), LinearLayout.LayoutParams(0, dp(68), 1f).apply { rightMargin = dp(6) })
         buttons.addView(mouseButton("Right", MouseProtocol.BTN_RIGHT), LinearLayout.LayoutParams(0, dp(68), 1f).apply { leftMargin = dp(6) })
         main.addView(buttons)
+
+        // Keys the on-screen keyboard lacks; only shown while the keyboard is open.
+        keyRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+            for ((label, key) in listOf(
+                "Esc" to MouseProtocol.KEY_ESCAPE, "Tab" to MouseProtocol.KEY_TAB, "Del" to MouseProtocol.KEY_DELETE,
+                "Home" to MouseProtocol.KEY_HOME, "End" to MouseProtocol.KEY_END,
+                "←" to MouseProtocol.KEY_LEFT, "↑" to MouseProtocol.KEY_UP, "↓" to MouseProtocol.KEY_DOWN, "→" to MouseProtocol.KEY_RIGHT
+            )) {
+                addView(TextView(this@MainActivity).apply {
+                    text = label
+                    gravity = Gravity.CENTER
+                    textSize = 11f
+                    maxLines = 1
+                    setPadding(0, 0, 0, 0)
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(pal.text)
+                    background = pal.pressable(pal.card, pal.pressed, dpf(12), pal.stroke, 1)
+                    isSoundEffectsEnabled = false
+                    setOnClickListener { onKey(key) }
+                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(1); marginEnd = dp(1) })
+            }
+        }
+        main.addView(keyRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
         main.addView(buildPad(), LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(12) })
         return main
@@ -242,6 +324,44 @@ class MainActivity : Activity() {
             true
         }
     }
+
+    // ---------- keyboard ----------
+
+    private fun updateKeyboardPill() {
+        keyboardPill.text = if (keyboardOn) "Type: on" else "Type"
+        keyboardPill.setTextColor(if (keyboardOn) pal.onAccent else pal.text)
+        keyboardPill.background =
+            if (keyboardOn) pal.rounded(pal.accent, dpf(24)) else pal.pressable(pal.card, pal.pressed, dpf(24), pal.stroke, 1)
+    }
+
+    private fun setKeyboard(on: Boolean) {
+        keyboardOn = on
+        keyRow.visibility = if (on) View.VISIBLE else View.GONE
+        updateKeyboardPill()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        if (on) keyCapture.post { keyCapture.requestFocus(); imm.showSoftInput(keyCapture, 0) }
+        else imm.hideSoftInputFromWindow(keyCapture.windowToken, 0)
+    }
+
+    /** Keyboard mode: a full-screen PC keyboard. Landscape is forced while it is open so all keys fit. */
+    private fun showKeys(show: Boolean) {
+        if (show) {
+            if (keyboardOn) setKeyboard(false)
+            keys.rebuild(capsAsCtrl, stickyMods)
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            keys.releaseAll()
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        keys.view.visibility = if (show) View.VISIBLE else View.GONE
+        mainScreen.visibility = if (show) View.GONE else View.VISIBLE
+    }
+
+    override fun onCombo(mods: Int, hid: Int) =
+        sendBytes(MouseProtocol.mods(mods) + MouseProtocol.keyHid(hid) + MouseProtocol.mods(0))
+
+    override fun onChar(codePoint: Int) = sendBytes(MouseProtocol.keyChar(codePoint))
+    override fun onKey(key: Int) = sendBytes(MouseProtocol.key(key))
 
     private fun sendBytes(b: ByteArray) { runCatching { port?.send(b, 0, b.size) } }
 
@@ -324,6 +444,8 @@ class MainActivity : Activity() {
     }
 
     // ---------- settings overlay ----------
+
+    private fun settingsOpen() = ::settings.isInitialized && settings.visibility == View.VISIBLE
 
     private fun showSettings(show: Boolean) { settings.visibility = if (show) View.VISIBLE else View.GONE }
 
@@ -415,6 +537,15 @@ class MainActivity : Activity() {
             addView(toggle("Mouse click sound (Left / Right buttons only)", soundOn) {
                 soundOn = it; prefs().edit().putBoolean("sound", it).apply()
             })
+        })
+
+        add(card("Keyboard") {
+            addView(toggle("Caps Lock acts as Ctrl (keyboard mode, and a hardware keyboard in Type mode)", capsAsCtrl) {
+                capsAsCtrl = it; prefs().edit().putBoolean("capsCtrl", it).apply()
+            })
+            addView(toggle("Sticky modifiers: tap Shift / Ctrl / Alt / Win to keep it on for the next key (keyboard mode)", stickyMods) {
+                stickyMods = it; prefs().edit().putBoolean("stickyMods", it).apply()
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         })
 
         add(card("Appearance") {

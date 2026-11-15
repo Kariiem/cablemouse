@@ -28,10 +28,31 @@ class ProtocolTest {
                 "down" -> MouseProtocol.button(value, true)
                 "up" -> if (bytes.startsWith("80")) MouseProtocol.button(value, false) else return@forEach
                 "heartbeat" -> MouseProtocol.heartbeat()
+                "key_char" -> MouseProtocol.keyChar(value)
+                "key_special" -> MouseProtocol.key(value)
+                "mods" -> MouseProtocol.mods(value)
+                "key_hid" -> MouseProtocol.keyHid(value)
                 else -> error(ev)
             }
             assertEquals(bytes, hex(got))
         }
+    }
+
+    @Test fun keyCharRoundTripsEveryPlane() {
+        // Decode the three groups back the way the C helper does and compare.
+        for (cp in listOf(0x20, 0x7F, 0x80, 0x3FFF, 0x4000, 0xFFFF, 0x10000, 0x10FFFF)) {
+            val b = MouseProtocol.keyChar(cp)
+            assertEquals(9, b.size)
+            assertEquals(cp, ((b[2].toInt() shl 14) or (b[5].toInt() shl 7) or b[8].toInt()))
+            assertEquals(true, b.indices.filter { it % 3 == 2 }.all { b[it] in 0..0x7F })
+        }
+    }
+
+    @Test fun layoutRowsAreFifteenUnitsWide() {
+        for (caps in listOf(false, true))
+            com.cablemouse.ui.KeyLayout.rows(caps).forEachIndexed { i, row ->
+                assertEquals("row $i caps=$caps", 15f, row.sumOf { it.width.toDouble() }.toFloat(), 0.001f)
+            }
     }
 
     @Test fun schedulerKeepsFractions() {
