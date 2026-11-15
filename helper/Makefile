@@ -3,22 +3,27 @@ ASSETS = ../app/src/main/assets/helpers
 VECTORS = ../testvectors/protocol.txt
 
 .PHONY: test linux legacy ape assets clean
-test: build/test_protocol
+test: build/test_protocol build/test_stream
 	./build/test_protocol $(VECTORS)
+	./build/test_stream
 
 build/test_protocol: tests/test_protocol.c common/protocol.c common/protocol.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -o $@ tests/test_protocol.c common/protocol.c
 
-linux: build/cablemouse-linux
-build/cablemouse-linux: main.c common/protocol.c backends/linux.c backend.h
+build/test_stream: tests/test_stream.c common/stream_check.c common/stream_check.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -o $@ main.c common/protocol.c backends/linux.c -ldl
+	$(CC) $(CFLAGS) -o $@ tests/test_stream.c common/stream_check.c
+
+linux: build/cablemouse-linux
+build/cablemouse-linux: main.c common/protocol.c common/stream_check.c backends/linux.c backend.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o $@ main.c common/protocol.c common/stream_check.c backends/linux.c -ldl
 
 legacy: build/cablemouse-legacy.exe
-build/cablemouse-legacy.exe: main.c common/protocol.c backends/win.c backend.h
+build/cablemouse-legacy.exe: main.c common/protocol.c common/stream_check.c backends/win.c backend.h
 	@mkdir -p build
-	i686-w64-mingw32-gcc $(CFLAGS) -DLEGACY_WIN32 -o $@ main.c common/protocol.c backends/win.c -lwinmm -luser32 -static -s -Wl,--no-insert-timestamp
+	i686-w64-mingw32-gcc $(CFLAGS) -DLEGACY_WIN32 -o $@ main.c common/protocol.c common/stream_check.c backends/win.c -lwinmm -luser32 -static -s -Wl,--no-insert-timestamp
 
 # Universal APE; backend selection via IsWindows()/IsXnu()/IsLinux() is still TODO (needs cosmocc spike).
 ape:
